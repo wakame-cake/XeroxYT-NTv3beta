@@ -163,8 +163,6 @@ const ChannelPage: React.FC = () => {
     const renderHomeTab = () => {
         if (isTabLoading && !homeData) return <div className="text-center p-8">読み込み中...</div>;
         
-        // データがなく、ロード中でもない場合のみエラー・空状態を表示
-        // ただし、初期状態で即座に表示しないように配慮
         if (!homeData) {
              return null; 
         }
@@ -194,12 +192,25 @@ const ChannelPage: React.FC = () => {
                             <Link to={`/watch/${homeData.topVideo.videoId}`}>
                                 <h3 className="text-base md:text-lg font-bold mb-1 md:mb-2 line-clamp-2">{homeData.topVideo.title}</h3>
                             </Link>
-                            <p className="text-xs md:text-sm text-yt-light-gray mb-2 md:mb-4 line-clamp-3">{homeData.topVideo.description}</p>
-                            <div className="flex items-center text-xs md:text-sm text-yt-light-gray font-medium">
+                            
+                            {/* Channel Name (Added) */}
+                            <div className="flex items-center mb-2">
+                                {channelDetails && (
+                                    <Link to={`/channel/${channelDetails.id}`} className="text-black dark:text-white font-semibold hover:text-yt-icon text-sm">
+                                        {channelDetails.name}
+                                    </Link>
+                                )}
+                            </div>
+
+                            <div className="flex items-center text-xs md:text-sm text-yt-light-gray font-medium mb-3">
                                 <span>{homeData.topVideo.viewCount}</span>
                                 <span className="mx-1">•</span>
                                 <span>{homeData.topVideo.published}</span>
                             </div>
+                            
+                            <p className="text-xs md:text-sm text-yt-light-gray line-clamp-3 md:line-clamp-4 whitespace-pre-line">
+                                {homeData.topVideo.description?.replace(/<br\s*\/?>/gi, '\n')}
+                            </p>
                         </div>
                     </div>
                 )}
@@ -230,7 +241,7 @@ const ChannelPage: React.FC = () => {
     };
 
     return (
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6">
+        <div className="max-w-[1750px] mx-auto px-4 sm:px-6">
             {/* Banner */}
             {channelDetails.bannerUrl && (
                 <div className="w-full aspect-[6/1] md:aspect-[6/1.2] lg:aspect-[6.2/1] rounded-xl overflow-hidden mb-6">
@@ -247,6 +258,10 @@ const ChannelPage: React.FC = () => {
                     <h1 className="text-2xl md:text-3xl font-bold mb-1 md:mb-2">{channelDetails.name}</h1>
                     <div className="text-yt-light-gray text-sm mb-3 flex flex-wrap justify-center md:justify-start gap-x-2">
                          <span>{channelDetails.handle}</span>
+                         <span>‧</span>
+                         <span>{channelDetails.subscriberCount}</span>
+                         <span>‧</span>
+                         <span>{channelDetails.videoCount} 本の動画</span>
                     </div>
                     <p className="text-yt-light-gray text-sm line-clamp-1 mb-3 max-w-2xl cursor-pointer mx-auto md:mx-0" onClick={() => alert(channelDetails.description)}>
                         {channelDetails.description}

@@ -82,23 +82,26 @@ const VideoPlayerPage: React.FC = () => {
             window.scrollTo(0, 0);
 
             try {
-                // Video Details and Comments
+                // Fetch details and comments
                 const detailsPromise = getVideoDetails(videoId);
                 const commentsPromise = getComments(videoId);
                 
-                // Fetch related videos from the specific external API requested
-                // https://siawaseok.duckdns.org/api/video2/ID
+                // Fetch external related videos
                 const relatedPromise = getExternalRelatedVideos(videoId);
                 
-                const [details, commentsData, externalRelated] = await Promise.all([detailsPromise, commentsPromise, relatedPromise]);
+                const [details, commentsData, externalRelated] = await Promise.all([
+                    detailsPromise, 
+                    commentsPromise, 
+                    relatedPromise
+                ]);
                 
                 setVideoDetails(details);
                 setComments(commentsData);
                 
-                // Prioritize external API results for related videos
+                // Ensure related videos are set correctly, prioritizing external API
                 if (externalRelated && externalRelated.length > 0) {
                     setRelatedVideos(externalRelated);
-                } else {
+                } else if (details.relatedVideos && details.relatedVideos.length > 0) {
                     setRelatedVideos(details.relatedVideos);
                 }
 
@@ -213,7 +216,7 @@ const VideoPlayerPage: React.FC = () => {
                     {/* Title */}
                     <h1 className="text-lg md:text-xl font-bold mt-3 mb-2 text-black dark:text-white break-words">{videoDetails.title}</h1>
 
-                    {/* Actions Bar Container - Modified for better spacing and no overlap */}
+                    {/* Actions Bar Container */}
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 pb-2">
                         {/* Left: Channel Info & Subscribe */}
                         <div className="flex items-center justify-between md:justify-start w-full md:w-auto gap-4">
@@ -302,8 +305,6 @@ const VideoPlayerPage: React.FC = () => {
                     <div className="mt-6 hidden lg:block">
                         <div className="flex items-center mb-6">
                             <h2 className="text-xl font-bold">{comments.length.toLocaleString()}件のコメント</h2>
-                            <div className="ml-8 flex items-center cursor-pointer">
-                            </div>
                         </div>
                         <div className="space-y-4">
                             {comments.map(comment => (
@@ -327,9 +328,16 @@ const VideoPlayerPage: React.FC = () => {
                     <button className="px-3 py-1.5 bg-yt-light dark:bg-[#272727] text-black dark:text-white text-xs md:text-sm font-semibold rounded-lg whitespace-nowrap hover:bg-gray-200 dark:hover:bg-gray-700">最近アップロードされた動画</button>
                 </div>
 
-                {relatedVideos.map(video => (
-                    <RelatedVideoCard key={video.id} video={video} />
-                ))}
+                {/* Render Related Videos */}
+                <div className="flex flex-col space-y-3">
+                    {relatedVideos.length > 0 ? (
+                        relatedVideos.map(video => (
+                            <RelatedVideoCard key={video.id} video={video} />
+                        ))
+                    ) : (
+                        !isLoading && <div className="text-center py-4 text-yt-light-gray">関連動画が見つかりません</div>
+                    )}
+                </div>
 
                 {/* Mobile Comments Fallback */}
                 <div className="block lg:hidden mt-8 border-t border-yt-spec-light-20 dark:border-yt-spec-20 pt-4">

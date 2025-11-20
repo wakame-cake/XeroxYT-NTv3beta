@@ -197,11 +197,16 @@ export async function getExternalRelatedVideos(videoId: string): Promise<Video[]
         if (!response.ok) return [];
         
         const data = await response.json();
+        
+        // Handle various response structures (array, object with items, object with related_videos)
         const items = Array.isArray(data) ? data : (data.items || data.related_videos || []);
         
         return items.map((item: any) => {
-            // Check if item is already formatted or needs mapping
-            if (item.id && item.thumbnailUrl && item.channelName) return item as Video;
+            // If item is already in our internal Video format (likely from a previous proxy transformation)
+            if (item.id && item.thumbnailUrl && item.channelName) {
+                return item as Video;
+            }
+            // Otherwise map from YoutubeI/raw format
             return mapYoutubeiVideoToVideo(item);
         }).filter((v: any): v is Video => v !== null);
     } catch (e) {
