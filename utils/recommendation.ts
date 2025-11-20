@@ -1,6 +1,6 @@
 
 import type { Video, Channel } from '../types';
-import { searchVideos, getChannelVideos, getRecommendedVideos } from './api';
+import { searchVideos, getChannelVideos } from './api';
 
 // 文字列からハッシュタグや重要そうなキーワードを抽出する
 const extractKeywords = (text: string): string[] => {

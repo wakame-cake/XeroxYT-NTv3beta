@@ -117,16 +117,32 @@ const HomePage: React.FC = () => {
             fetchedVideos.forEach(v => {
                 const seconds = parseDuration(v.isoDuration, v.duration);
                 // Consider Short if <= 60s OR contains #shorts. 
-                // Note: We assume short duration or explicit tag means it fits "Shorts/Vertical" category request.
+                // Vertical videos are absolutely put into Shorts category.
                 const isShort = (seconds > 0 && seconds <= 60) || v.title.toLowerCase().includes('#shorts');
 
+                // -------------------------------------------------------------------------
+                // ユーザー要件に基づくフィルタリング (Xerox, 海外動画)
+                // -------------------------------------------------------------------------
+                const lowerTitle = v.title.toLowerCase();
+                const lowerDesc = (v.descriptionSnippet || '').toLowerCase();
+                const lowerChannel = v.channelName.toLowerCase();
+                const fullText = `${lowerTitle} ${lowerDesc} ${lowerChannel}`;
+
+                // 1. Xerox Filter
+                // "xerox"を含み、かつ指定のチャンネルID(UCCMV3NfZk_NB-MmUvHj6aFw)ではない場合除外
+                if (fullText.includes('xerox') && v.channelId !== 'UCCMV3NfZk_NB-MmUvHj6aFw') {
+                    return;
+                }
+
                 if (isShort) {
-                    // Shorts Shelf Filter: Must contain Japanese text to filter out overseas videos
-                    // 日本語のタイトル、説明、またはチャンネル名が含まれている場合のみショート棚に追加
+                    // 2. Shorts Shelf Filter (No Overseas)
+                    // ショートカテゴリのおすすめは海外向け動画を表示しない
+                    // ただしXeroxチャンネル(AZKi)は許可する
                     const hasJapanese = containsJapanese(v.title) || containsJapanese(v.descriptionSnippet || '') || containsJapanese(v.channelName);
-                    if (hasJapanese) {
-                        nextShorts.push(v);
+                    if (!hasJapanese && v.channelId !== 'UCCMV3NfZk_NB-MmUvHj6aFw') {
+                        return;
                     }
+                    nextShorts.push(v);
                 } else {
                     nextVideos.push(v);
                 }
