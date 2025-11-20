@@ -133,10 +133,10 @@ const validateVideo = (
     });
     
     // Freshness
-    // 「新規動画」の重要度を2倍にする (score += 20)
-    if (source.preferredFreshness === 'new' || true) { // Always boost fresh content slightly if no preference to ensure variety
+    // 「新規動画」の重要度を3/4倍程度にする (20 -> 15)
+    if (source.preferredFreshness === 'new' || true) { 
          if (video.uploadedAt.includes('分前') || video.uploadedAt.includes('時間前') || video.uploadedAt.includes('日前')) {
-            score += 20;
+            score += 15;
         }
     }
 
@@ -147,6 +147,11 @@ const validateVideo = (
         if (recentSearches.some(s => fullText.includes(s.toLowerCase()))) {
              score += 30;
         }
+    }
+    
+    // Japanese Content Priority (User Requirement)
+    if (containsJapanese(fullText)) {
+        score += 50; // 大きくスコアを加算して日本語動画を優先
     }
 
     return { isValid: true, score, reasons };
@@ -170,14 +175,43 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
     // 取得するクエリの総数
     const TOTAL_QUERIES = 8;
     
-    // ソース群の定義と重み付け
-    // weight: 選択される確率の重み
+    // ソース群の定義と重み付け（動的に計算）
+    
+    const hasHistory = watchHistory.length > 0 || searchHistory.length > 0;
+    // Xerox is default, so > 1 means user added subs
+    const hasSubs = subscribedChannels.length > 1; 
+
+    let wHistory = 40;
+    let wSubs = 25;
+    let wFresh = 15; // Reduced from 20 (3/4 scale)
+    let wKeywords = 10;
+    let wDiscovery = 5;
+
+    // ユーザーデータに基づく自動調整
+    if (hasHistory) {
+        if (watchHistory.length > 30) wHistory += 10; // 履歴が多い場合は履歴ベースを強化
+        if (watchHistory.length > 100) wHistory += 10;
+    } else {
+        wHistory = 5; // 履歴がない場合は最小限
+        wDiscovery += 15;
+        wFresh += 15; // 新規ユーザーには新しい動画を多めに
+    }
+
+    if (hasSubs) {
+        if (subscribedChannels.length > 5) wSubs += 10;
+        if (subscribedChannels.length > 20) wSubs += 10;
+    } else {
+        wSubs = 0;
+        wDiscovery += 10;
+        wFresh += 5;
+    }
+
     const querySources = [
-        { type: 'history', weight: 40 }, 
-        { type: 'subs', weight: 25 },
-        { type: 'fresh', weight: 20 }, // 新規動画用ソースを追加
-        { type: 'keywords', weight: 10 }, 
-        { type: 'discovery', weight: 5 } 
+        { type: 'history', weight: wHistory }, 
+        { type: 'subs', weight: wSubs },
+        { type: 'fresh', weight: wFresh },
+        { type: 'keywords', weight: wKeywords }, 
+        { type: 'discovery', weight: wDiscovery } 
     ];
 
     const getRandomSourceType = () => {
@@ -193,7 +227,7 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
     // クエリ生成ループ
     for (let i = 0; i < TOTAL_QUERIES; i++) {
         const type = getRandomSourceType();
-        const randomTopics = ['Music', 'Gaming', 'Vlog', 'Live', 'News', 'Tech', 'Art', 'Cat', 'Cooking', 'Anime'];
+        const randomTopics = ['Music', 'Gaming', 'Vlog', 'Live', 'News', 'Tech', 'Art', 'Cat', 'Cooking', 'Anime', 'Japan', 'Travel'];
         const randomTopic = randomTopics[Math.floor(Math.random() * randomTopics.length)];
 
         switch (type) {
@@ -231,7 +265,12 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
             
             case 'fresh':
                 // 新規動画を狙うクエリ
-                queries.add(`New ${randomTopic}`);
+                // 日本語のコンテンツが出やすいように日本語キーワードを混ぜる確率を上げる
+                 if (Math.random() > 0.3) {
+                    queries.add(`最新 ${randomTopic}`);
+                } else {
+                    queries.add(`New ${randomTopic}`);
+                }
                 break;
 
             case 'keywords':
@@ -253,6 +292,7 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
     if (queries.size === 0) {
         queries.add('Trending');
         queries.add('Japan');
+        queries.add('Anime');
     }
 
     // ---------------------------------------------------------
@@ -285,12 +325,20 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
 
         const validation = validateVideo(video, sources);
         if (validation.isValid) {
+            // 日本語動画などを優先するため、スコアを保持して後でソートに使用する
+            (video as any)._score = validation.score;
             validVideos.push(video);
         }
     }
+    
+    // スコアで降順ソート（日本語動画などが上位に来るようにする）
+    validVideos.sort((a, b) => ((b as any)._score || 0) - ((a as any)._score || 0));
+    
+    // 上位の結果を優先しつつ、ランダム性を維持するためにトップ層を抽出してシャッフル
+    const topVideos = validVideos.slice(0, 60);
 
     // ---------------------------------------------------------
     // 4. Final Shuffle
     // ---------------------------------------------------------
-    return shuffleArray(validVideos);
+    return shuffleArray(topVideos);
 };
