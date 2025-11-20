@@ -36,8 +36,15 @@ app.get('/api/video', async (req, res) => {
     }
     
     // 追加: player_overlays内のエンドスクリーンから関連動画を取得 (Login Required時などの対策)
-    if (!initialRelated.length && info.player_overlays?.end_screen?.results) {
-      initialRelated = info.player_overlays.end_screen.results;
+    // youtubei.jsのバージョンや変換によってプロパティ名が camelCase (playerOverlays) だったり snake_case (player_overlays) だったりするため両方チェック
+    if (!initialRelated.length) {
+        const overlays = info.player_overlays || info.playerOverlays;
+        if (overlays) {
+            const endScreen = overlays.end_screen || overlays.endScreen;
+            if (endScreen && Array.isArray(endScreen.results)) {
+                initialRelated = endScreen.results;
+            }
+        }
     }
     
     // 2. キューと処理済みIDセットの準備

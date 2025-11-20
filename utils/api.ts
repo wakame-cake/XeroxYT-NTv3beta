@@ -76,6 +76,15 @@ export async function getPlayerConfig(): Promise<string> {
 // --- DATA MAPPING HELPERS ---
 const mapYoutubeiVideoToVideo = (item: any): Video | null => {
     if (!item?.id) return null;
+    
+    // short_view_countの処理: "749万 回視聴" のような形式を想定
+    let views = '視聴回数不明';
+    if (item.view_count?.text) {
+        views = `${formatJapaneseNumber(item.view_count.text)}回視聴`;
+    } else if (item.short_view_count?.text) {
+        views = item.short_view_count.text;
+    }
+
     return {
         id: item.id,
         thumbnailUrl: item.thumbnails?.[0]?.url.split('?')[0] ?? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
@@ -85,11 +94,7 @@ const mapYoutubeiVideoToVideo = (item: any): Video | null => {
         channelName: item.author?.name ?? item.channel?.name ?? '不明なチャンネル',
         channelId: item.author?.id ?? item.channel?.id ?? '',
         channelAvatarUrl: item.author?.thumbnails?.[0]?.url ?? item.channel?.thumbnails?.[0]?.url ?? '',
-        // view_countがある場合は整形し、ない場合はshort_view_countを使用する。
-        // EndScreenVideoの場合、short_view_count.textが "749万 回視聴" のように提供される。
-        views: item.view_count?.text 
-            ? `${formatJapaneseNumber(item.view_count.text)}回視聴` 
-            : (item.short_view_count?.text ?? '視聴回数不明'),
+        views: views,
         uploadedAt: formatJapaneseDate(item.published?.text ?? ''),
         descriptionSnippet: item.description_snippet?.text ?? '',
     };
