@@ -242,7 +242,29 @@ export async function getChannelDetails(channelId: string): Promise<ChannelDetai
 export async function getChannelVideos(channelId: string, pageToken = '1'): Promise<{ videos: Video[], nextPageToken?: string }> {
     const page = parseInt(pageToken, 10);
     const data = await apiFetch(`channel?id=${channelId}&page=${page}`);
-    const videos = data.videos?.map(mapYoutubeiVideoToVideo).filter((v): v is Video => v !== null) ?? [];
+    
+    const channelMeta = data.channel;
+    let avatarUrl = '';
+    if (channelMeta?.avatar) {
+        if (Array.isArray(channelMeta.avatar) && channelMeta.avatar.length > 0) {
+            avatarUrl = channelMeta.avatar[0].url;
+        } else if (typeof channelMeta.avatar === 'string') {
+            avatarUrl = channelMeta.avatar;
+        } else if (typeof channelMeta.avatar === 'object' && channelMeta.avatar.url) {
+            avatarUrl = channelMeta.avatar.url;
+        }
+    }
+
+    const videos = data.videos?.map((item: any) => {
+        const video = mapYoutubeiVideoToVideo(item);
+        if (video) {
+            if (channelMeta?.name) video.channelName = channelMeta.name;
+            if (channelMeta?.id) video.channelId = channelMeta.id;
+            if (avatarUrl) video.channelAvatarUrl = avatarUrl;
+        }
+        return video;
+    }).filter((v): v is Video => v !== null) ?? [];
+    
     const hasMore = videos.length > 0;
     return { videos, nextPageToken: hasMore ? String(page + 1) : undefined };
 }
