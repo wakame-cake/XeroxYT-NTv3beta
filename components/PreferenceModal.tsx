@@ -2,6 +2,10 @@
 import React, { useState } from 'react';
 import { CloseIcon } from './icons/Icons';
 import { usePreference } from '../contexts/PreferenceContext';
+import { useHistory } from '../contexts/HistoryContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { useSearchHistory } from '../contexts/SearchHistoryContext';
+import { getSuggestedKeywords } from '../utils/xrai';
 
 interface PreferenceModalProps {
     isOpen: boolean;
@@ -20,9 +24,15 @@ const PreferenceModal: React.FC<PreferenceModalProps> = ({ isOpen, onClose }) =>
         setPrefDepth, setPrefVocal, setPrefInfoEnt, setPrefVisual, setPrefCommunity,
         setUseXrai
     } = usePreference();
+    
+    // Contexts needed for suggestion logic
+    const { history } = useHistory();
+    const { subscribedChannels } = useSubscription();
+    const { searchHistory } = useSearchHistory();
 
     const [genreInput, setGenreInput] = useState('');
     const [ngInput, setNgInput] = useState('');
+    const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
 
     if (!isOpen) return null;
 
@@ -44,8 +54,18 @@ const PreferenceModal: React.FC<PreferenceModalProps> = ({ isOpen, onClose }) =>
     
     const addQuickTag = (tag: string) => {
         addPreferredGenre(tag);
+        setSuggestedTags(prev => prev.filter(t => t !== tag));
     }
     
+    const handleAutoSuggest = () => {
+        const suggestions = getSuggestedKeywords({
+            watchHistory: history,
+            searchHistory: searchHistory,
+            subscribedChannels: subscribedChannels
+        }, preferredGenres);
+        setSuggestedTags(suggestions);
+    };
+
     // Helper to handle both single string and array of strings for selection state
     const ToggleGroup: React.FC<{ 
         label: string, 
@@ -230,10 +250,36 @@ const PreferenceModal: React.FC<PreferenceModalProps> = ({ isOpen, onClose }) =>
 
                     {/* Section 4: Specific Interests (Tags) */}
                     <section>
-                        <h3 className="text-lg font-bold text-black dark:text-white mb-4 flex items-center gap-2">
-                            キーワード設定
-                        </h3>
+                        <div className="flex justify-between items-center mb-4">
+                             <h3 className="text-lg font-bold text-black dark:text-white flex items-center gap-2">
+                                キーワード設定
+                            </h3>
+                            <button 
+                                onClick={handleAutoSuggest}
+                                className="text-sm bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full font-bold hover:opacity-90 transition-opacity shadow-md"
+                            >
+                                ✨ AI提案
+                            </button>
+                        </div>
                         
+                        {/* Suggestions Area */}
+                        {suggestedTags.length > 0 && (
+                            <div className="mb-6 animate-fade-in">
+                                <p className="text-xs text-yt-light-gray mb-2 font-bold uppercase text-purple-500">あなたへのおすすめ（クリックして追加）</p>
+                                <div className="flex flex-wrap gap-2 bg-purple-500/10 p-4 rounded-xl border border-purple-500/20">
+                                    {suggestedTags.map(tag => (
+                                        <button 
+                                            key={tag}
+                                            onClick={() => addQuickTag(tag)}
+                                            className="px-3 py-1 rounded-full text-sm font-medium bg-white dark:bg-black border border-purple-300 text-purple-600 dark:text-purple-300 hover:scale-105 transition-transform"
+                                        >
+                                            + {tag}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mb-4">
                             <p className="text-xs text-yt-light-gray mb-2 font-bold uppercase">人気のタグ</p>
                             <div className="flex flex-wrap gap-2">

@@ -1,7 +1,8 @@
-
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { HomeIcon, ShortsIcon, SubscriptionsIcon, YouIcon } from './icons/Icons';
+
+const { NavLink } = ReactRouterDOM;
 
 const BottomNavigation: React.FC = () => {
   const navClass = ({ isActive }: { isActive: boolean }) =>

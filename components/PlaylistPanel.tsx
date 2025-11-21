@@ -1,7 +1,9 @@
 import React, { useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import type { Playlist, Video } from '../types';
 import { ShuffleIcon, RepeatIcon, DragHandleIcon } from './icons/Icons';
+
+const { Link, useSearchParams } = ReactRouterDOM;
 
 interface PlaylistPanelProps {
   playlist: Playlist;

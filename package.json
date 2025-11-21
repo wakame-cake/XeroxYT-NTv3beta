@@ -1,3 +1,4 @@
+
 {
   "name": "xeroxyt-nt-with-youtubei",
   "private": true,
@@ -10,6 +11,7 @@
     "postinstall": "curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o ./yt-dlp_linux && chmod +x ./yt-dlp_linux"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.46",
     "dayjs": "^1.11.11",
     "express": "^5.1.0",
     "react": "^19.1.1",

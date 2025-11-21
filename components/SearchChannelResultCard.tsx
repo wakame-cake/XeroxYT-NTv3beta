@@ -1,6 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import type { Channel } from '../types';
+
+const { Link } = ReactRouterDOM;
 
 interface SearchChannelResultCardProps {
   channel: Channel;

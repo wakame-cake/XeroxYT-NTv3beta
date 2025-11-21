@@ -1,8 +1,9 @@
 import React from 'react';
 import type { Video } from '../types';
-import { Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { LikeIcon, MoreIconHorizontal, CommentIcon } from './icons/Icons';
 
+const { Link } = ReactRouterDOM;
 
 interface ShortsPlayerProps {
     video: Video;

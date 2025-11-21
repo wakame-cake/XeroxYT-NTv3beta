@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { MenuIcon, YouTubeLogo, SearchIcon, BellIcon, LightbulbIcon, MoonIcon, SettingsIcon, SaveIcon, DownloadIcon } from './icons/Icons';
 import { useNotification } from '../contexts/NotificationContext';
 import { useSearchHistory } from '../contexts/SearchHistoryContext';
@@ -8,13 +7,16 @@ import { usePreference } from '../contexts/PreferenceContext';
 import NotificationDropdown from './NotificationDropdown';
 import PreferenceModal from './PreferenceModal';
 
+const { useNavigate, Link } = ReactRouterDOM;
+
 interface HeaderProps {
   toggleSidebar: () => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
+  onChatToggle?: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) => {
+const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme, onChatToggle }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -135,6 +137,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, theme, toggleTheme }) =>
 
       {/* Right Section */}
       <div className="flex items-center space-x-0 sm:space-x-2 md:space-x-4">
+        {onChatToggle && (
+            <button onClick={onChatToggle} className="p-2 rounded-full hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 active:scale-95 transform transition-transform duration-150 text-2xl" title="AIアシスタント">
+                ✨
+            </button>
+        )}
         <button onClick={toggleTheme} className="p-2 rounded-full hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 active:scale-95 transform transition-transform duration-150 hidden sm:block" aria-label="テーマの切り替え">
           {theme === 'light' ? <MoonIcon /> : <LightbulbIcon />}
         </button>

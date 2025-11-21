@@ -27,14 +27,14 @@ const JAPANESE_STOP_WORDS = new Set([
   'の', 'に', 'は', 'を', 'が', 'で', 'です', 'ます', 'こと', 'もの', 'これ', 'それ', 'あれ',
   'いる', 'する', 'ある', 'ない', 'から', 'まで', 'と', 'も', 'や', 'など', 'さん', 'ちゃん',
   'about', 'and', 'the', 'to', 'a', 'of', 'in', 'for', 'on', 'with', 'as', 'at', 'movie', 'video',
-  'official', 'channel', 'music', 'mv', 'pv', 'tv'
+  'official', 'channel', 'music', 'mv', 'pv', 'tv', 'shorts', 'part', 'vol', 'no', 'ep'
 ]);
 
 const segmenter = (typeof Intl !== 'undefined' && (Intl as any).Segmenter) 
     ? new (Intl as any).Segmenter('ja', { granularity: 'word' }) 
     : null;
 
-const extractKeywords = (text: string): string[] => {
+export const extractKeywords = (text: string): string[] => {
   if (!text) return [];
   const cleanedText = text.toLowerCase();
   let words: string[] = [];
@@ -104,11 +104,25 @@ export const inferTopInterests = (profile: UserProfile, limit: number = 6): stri
         .slice(0, limit);
 };
 
+/**
+ * Generates smart keyword suggestions based on user history.
+ * Filters out keywords that are already in the preferredGenres list.
+ */
+export const getSuggestedKeywords = (sources: UserSources, currentPreferences: string[]): string[] => {
+    const profile = buildUserProfile(sources);
+    const allInterests = inferTopInterests(profile, 20);
+    
+    // Filter out already added preferences and normalize
+    const existingSet = new Set(currentPreferences.map(p => p.toLowerCase()));
+    
+    return allInterests.filter(interest => {
+        return !existingSet.has(interest.toLowerCase()) && interest.length > 1;
+    }).slice(0, 10);
+};
+
 // --- Feature Engineering (Based on PDF) ---
 
 // 1. Example Age (Freshness)
-// The PDF states freshness is crucial. The model fits to the upload time distribution.
-// We simulate this with a decay function that favors new content but doesn't kill evergreen content.
 const calculateFreshnessBias = (uploadedAt: string): number => {
     if (!uploadedAt) return 0.5;
     const text = uploadedAt.toLowerCase();
@@ -123,15 +137,10 @@ const calculateFreshnessBias = (uploadedAt: string): number => {
     else if (text.includes('月') || text.includes('month')) daysAgo = num * 30;
     else if (text.includes('年') || text.includes('year')) daysAgo = num * 365;
 
-    // Gaussian-like decay: High for recent, slow tail for older
-    // e.g. 0 days = 1.0, 7 days = ~0.8, 30 days = ~0.5, 1 year = ~0.1
     return Math.exp(-0.02 * daysAgo); 
 };
 
 // 2. Predicted Watch Time Proxy
-// The PDF's objective function is "Expected Watch Time".
-// We don't have the model, so we approximate: Duration * (Probability of Watching)
-// Probability is inferred from: Views (Social Proof) + Likes + Relevance
 const parseDurationSeconds = (iso: string, text: string): number => {
     if (iso) {
         const matches = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
@@ -183,7 +192,6 @@ export const rankVideos = (
     }
 
     // --- Feature 1: Semantic Relevance (Cosine Similarity) ---
-    // Represents "p(click)" to some extent
     let dotProduct = 0;
     let videoVecMagSq = 0;
     const videoKeywords = extractKeywords(fullText);
@@ -205,44 +213,31 @@ export const rankVideos = (
     const freshness = calculateFreshnessBias(video.uploadedAt);
 
     // --- Feature 3: Engagement / Popularity ---
-    // Represents global probability of being good
     const views = parseViewCount(video.views);
-    // Log normalization for views (diminishing returns)
-    const popularity = Math.log10(views + 1) / 10; // Roughly 0.0 to 1.0
+    const popularity = Math.log10(views + 1) / 10;
 
     // --- Feature 4: Estimated Video Length Value ---
-    // PDF emphasizes "Watch Time". Longer videos (if relevant) yield more watch time.
-    // However, very short videos (clickbait) are penalized in main recs.
     const durationSec = parseDurationSeconds(video.isoDuration, video.duration);
     let durationScore = 1.0;
-    if (durationSec < 60) durationScore = 0.6; // Penalize shorts in main feed
-    else if (durationSec > 600) durationScore = 1.2; // Boost long form slightly
+    if (durationSec < 60) durationScore = 0.6; 
+    else if (durationSec > 600) durationScore = 1.2;
 
-    // --- Final Score Calculation (Weighted Logistic Regression Simulation) ---
-    // Score = (Relevance * W1) * (Freshness * W2) * (Popularity * W3) * DurationMod
-    
-    // Base Score
+    // --- Final Score Calculation ---
     let score = (relevance * 5.0) + (freshness * 2.0) + (popularity * 1.0);
     
-    // Multiplicative Boosts
     score *= durationScore;
 
-    // Collaborative Filtering Simulation Boost
-    // If the video's channel matches a channel in recent history, boost significantly
     if (context.watchHistory.some(w => w.channelId === video.channelId)) {
         score *= 1.3;
     }
 
-    // Random noise for exploration (epsilon-greedy)
     score *= (0.95 + Math.random() * 0.1);
 
     scoredVideos.push({ video, score });
   }
 
-  // Sort by Final Score (Predicted Value)
   scoredVideos.sort((a, b) => b.score - a.score);
 
-  // Diversity Filter: Don't show too many from same channel
   const finalRanked: Video[] = [];
   const channelCounts = new Map<string, number>();
   const MAX_PER_CHANNEL = 2;

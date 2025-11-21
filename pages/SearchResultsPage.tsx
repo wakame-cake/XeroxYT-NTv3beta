@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { searchVideos } from '../utils/api';
 import type { Video, Channel, ApiPlaylist } from '../types';
 import SearchVideoResultCard from '../components/SearchVideoResultCard';
@@ -8,6 +8,8 @@ import SearchPlaylistResultCard from '../components/SearchPlaylistResultCard';
 import ShortsShelf from '../components/ShortsShelf';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { usePreference } from '../contexts/PreferenceContext';
+
+const { useSearchParams } = ReactRouterDOM;
 
 // Helper to parse duration string to seconds (Same as Home)
 const parseDuration = (iso: string, text: string): number => {

@@ -1,7 +1,8 @@
-
 import React from 'react';
-import { Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import type { Video } from '../types';
+
+const { Link } = ReactRouterDOM;
 
 interface ShortsCardProps {
   video: Video;

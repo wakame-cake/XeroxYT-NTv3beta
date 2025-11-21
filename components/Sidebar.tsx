@@ -1,8 +1,9 @@
-
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { HomeIcon, ShortsIcon, SubscriptionsIcon, HistoryIcon, PlaylistIcon } from './icons/Icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
+
+const { NavLink } = ReactRouterDOM;
 
 interface SidebarProps {
   isOpen: boolean;

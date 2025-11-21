@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import { usePlaylist } from '../contexts/PlaylistContext';
 import { getVideosByIds } from '../utils/api';
 import type { Video } from '../types';
 import { EditIcon, TrashIcon, PlayIcon, ShuffleIcon, RepeatIcon, DragHandleIcon, MoreIconHorizontal } from '../components/icons/Icons';
+
+const { useParams, useNavigate, Link } = ReactRouterDOM;
 
 const PlaylistPage: React.FC = () => {
     const { playlistId } = useParams<{ playlistId: string }>();

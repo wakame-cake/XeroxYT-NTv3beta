@@ -1,8 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import * as ReactRouterDOM from 'react-router-dom';
 import type { Video } from '../types';
 import { ChevronRightIcon } from './icons/Icons';
+
+const { Link } = ReactRouterDOM;
 
 interface VideoCardProps {
   video: Video;

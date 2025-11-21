@@ -1,11 +1,12 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
+import * as ReactRouterDOM from 'react-router-dom';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { getChannelVideos } from '../utils/api';
 import type { Video } from '../types';
 import VideoGrid from '../components/VideoGrid';
 import VideoCardSkeleton from '../components/icons/VideoCardSkeleton';
-import { Link } from 'react-router-dom';
+
+const { Link } = ReactRouterDOM;
 
 const SubscriptionsPage: React.FC = () => {
     const { subscribedChannels } = useSubscription();
