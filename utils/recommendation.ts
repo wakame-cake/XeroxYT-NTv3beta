@@ -1,35 +1,64 @@
 
 import type { Video, Channel } from '../types';
-import { searchVideos, getChannelVideos } from './api';
+import { searchVideos, getChannelVideos, getRecommendedVideos } from './api';
 
-// 人気の日本語ハッシュタグリスト
-const POPULAR_JP_TAGS = [
-    '#急上昇', '#切り抜き', '#歌ってみた', '#ゲーム実況', 
-    '#ASMR', '#Vtuber', '#アニメ', '#猫', '#犬', 
-    '#料理', '#大食い', '#メイク', '#vlog', 
-    '#ライブ', '#配信', '#神回', '#ドッキリ',
-    '#Minecraft', '#ポケモン', '#原神', '#ApexLegends', '#Valorant',
-    '#ニュース', '#政治', '#経済', '#スポーツ', '#野球', '#サッカー'
+// --- Trick 1: 拡張された多様性トピックリスト (ニュースを除外し、興味深い分野を網羅) ---
+const DIVERSITY_TOPICS = [
+    'ASMR', 'ガジェット', 'キャンプ', '料理', 'プログラミング', 
+    '宇宙', '都市伝説', 'ライフハック', 'DIY', '筋トレ', 
+    '猫', '犬', '旅行', 'ストリートフード', '映画レビュー', 
+    'アニメ考察', 'ゲーム実況', 'Vtuber', '歌ってみた', 'MV',
+    '建築', '歴史ミステリー', '科学実験', '心理学', '雑学'
 ];
 
-// 文字列からハッシュタグや重要そうなキーワードを抽出する
+// --- Trick 2: ニュース・政治・不快コンテンツの強力なNGワードリスト ---
+const NEWS_BLOCK_KEYWORDS = [
+    'ニュース', 'News', '報道', '政治', '首相', '大統領', '内閣', 
+    '事件', '事故', '逮捕', '裁判', '速報', '会見', '訃報', '地震', 
+    '津波', '災害', '炎上', '物申す', '批判', '晒し', '閲覧注意',
+    '衆院選', '参院選', '選挙', '与党', '野党', '政策', '経済効果',
+    'NHK', '日テレNEWS', 'FNN', 'TBS', 'ANN', 'テレ東BIZ'
+];
+
+// --- Trick 3: クエリの類語展開 (検索の幅を広げる) ---
+const QUERY_EXPANSIONS: Record<string, string[]> = {
+    'Game': ['Gameplay', '実況', '解説', 'RTA', '神プレイ'],
+    'Music': ['Playlist', 'MV', 'Live Performance', '作業用BGM', 'Cover'],
+    'Cat': ['Kitten', '猫動画', '癒し'],
+    'Cooking': ['Recipe', 'Street Food', '料理', '大食い'],
+    'Anime': ['AMV', '考察', '名シーン', 'reaction'],
+    'Tech': ['Review', 'Unboxing', 'Gadget', 'PC build'],
+};
+
+// --- Trick 4: 時間帯によるムード判定 ---
+const getTimeBasedTopic = (): string => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 10) return 'Morning Routine Vlog BGM'; // 朝: 爽やか
+    if (hour >= 10 && hour < 17) return 'Productivity Music';      // 昼: 作業・活発
+    if (hour >= 17 && hour < 22) return 'Entertainment Variety';   // 夜: エンタメ
+    return 'Relaxing ASMR Sleep';                                  // 深夜: リラックス
+};
+
+// --- Trick 5: 曜日によるムード判定 ---
+const getDayBasedTopic = (): string => {
+    const day = new Date().getDay();
+    if (day === 0 || day === 6) return 'Full Movie Documentary'; // 週末: 長尺
+    return 'Shorts Lifehacks'; // 平日: 短尺・効率
+};
+
 const extractKeywords = (text: string): string[] => {
     if (!text) return [];
     const hashtags = text.match(/#[^\s#]+/g) || [];
     const brackets = text.match(/[\[【](.+?)[\]】]/g) || [];
     const rawText = text.replace(/[\[【].+?[\]】]/g, '').replace(/#[^\s#]+/g, '');
-    // 記号を除去し、スペースで分割
     const words = rawText.replace(/[!-/:-@[-`{-~]/g, ' ').split(/\s+/);
     
     const cleanHashtags = hashtags.map(t => t.trim());
     const cleanBrackets = brackets.map(t => t.replace(/[\[【\]】]/g, '').trim());
-    // 短すぎる単語やURL、一般的な接続詞などを除外する簡易フィルタ
     const cleanWords = words.filter(w => 
         w.length > 1 && 
         !/^(http|www|com|jp|youtube|video|movie|the|and|of|in|to|for|on|with|movie|動画|公式|ch|channel|チャンネル)/i.test(w)
     );
-    
-    // 重複排除して結合
     return Array.from(new Set([...cleanHashtags, ...cleanBrackets, ...cleanWords]));
 };
 
@@ -68,164 +97,111 @@ interface RecommendationSource {
     discoveryMode?: string;
     ngKeywords?: string[];
     ngChannels?: string[];
-    // Preferences
     prefDepth?: string;
     prefVocal?: string;
-    prefEra?: string;
-    prefRegion?: string;
-    prefLive?: string;
     prefInfoEnt?: string;
-    prefPacing?: string;
     prefVisual?: string;
     prefCommunity?: string;
     page: number;
 }
 
-// --- SCORING ENGINE (FILTERING ONLY) ---
-// 並び替えのためではなく、ユーザー設定（NGや長さ）に合致しない動画を弾くためのフィルタとして機能させる
+// --- Trick 6: バリデーションロジックの強化 ---
 const validateVideo = (
     video: Video, 
     source: RecommendationSource
 ): { isValid: boolean; score: number; reasons: string[] } => {
     let score = 0;
     const reasons: string[] = [];
+    
     const lowerTitle = video.title.toLowerCase();
     const lowerDesc = (video.descriptionSnippet || '').toLowerCase();
     const lowerChannel = video.channelName.toLowerCase();
     const fullText = `${lowerTitle} ${lowerDesc} ${lowerChannel}`;
-    
-    // 0. Xerox Specific Filter
-    // "xerox"を含み、かつ指定のチャンネルID(UCCMV3NfZk_NB-MmUvHj6aFw)ではない場合除外
+
+    // 0. Xerox Filter (必須)
     if (fullText.includes('xerox') && video.channelId !== 'UCCMV3NfZk_NB-MmUvHj6aFw') {
         return { isValid: false, score: -9999, reasons: ['Keyword Exclusion: Xerox'] };
     }
 
-    // 1. NG Filter (Instant Block)
-    if (source.ngKeywords && source.ngKeywords.length > 0) {
-        for (const ng of source.ngKeywords) {
-            if (fullText.includes(ng.toLowerCase())) {
-                return { isValid: false, score: -9999, reasons: [`NG Keyword: ${ng}`] };
-            }
-        }
-    }
-    if (source.ngChannels && source.ngChannels.includes(video.channelId)) {
-        return { isValid: false, score: -9999, reasons: [`NG Channel: ${video.channelName}`] };
+    // --- Trick 7: ニュースブロックの実装 ---
+    if (NEWS_BLOCK_KEYWORDS.some(word => fullText.includes(word.toLowerCase()))) {
+        return { isValid: false, score: -9999, reasons: ['News Block'] };
     }
 
-    // 2. Duration Filter (Strict Block)
-    // ユーザーが長さを指定している場合、一致しないものは除外する
+    // --- Trick 8: タイトルスパム判定 (過剰な感嘆符や大文字) ---
+    if ((video.title.match(/!/g) || []).length > 5 || (video.title.match(/[A-Z]/g) || []).length > 30) {
+        score -= 20; // スコアを下げるが除外はしない
+    }
+
+    // 1. NG Filter
+    if (source.ngKeywords?.some(ng => fullText.includes(ng.toLowerCase()))) {
+        return { isValid: false, score: -9999, reasons: ['NG Keyword'] };
+    }
+    if (source.ngChannels?.includes(video.channelId)) {
+        return { isValid: false, score: -9999, reasons: ['NG Channel'] };
+    }
+
+    // 2. Duration Filter
     if (source.preferredDurations && source.preferredDurations.length > 0) {
         const sec = parseDurationToSeconds(video.isoDuration);
         let durationMatch = false;
-        
         if (source.preferredDurations.includes('short') && sec > 0 && sec < 240) durationMatch = true;
         if (source.preferredDurations.includes('medium') && sec >= 240 && sec <= 1200) durationMatch = true;
         if (source.preferredDurations.includes('long') && sec > 1200) durationMatch = true;
 
         if (!durationMatch && sec > 0) {
-            // 指定があるのに一致しない場合は無効化
             return { isValid: false, score: -500, reasons: ['Duration Mismatch'] };
         }
     }
 
-    // 3. Context Scoring (Bonus Only)
-    // ここでのスコアは「並び替え」には強く影響させず、「質」の担保に使う
-    
-    // History Relevance
+    // --- Trick 9: History Relevance (スコア加点) ---
     if (source.watchHistory.some(h => h.channelId === video.channelId)) {
-        score += 10;
+        score += 15;
     }
 
-    // Genre Match
-    source.preferredGenres.forEach(genre => {
-        if (fullText.includes(genre.toLowerCase())) {
-            score += 40;
-        }
-    });
-    
-    // Freshness
-    // 「新規動画」の重要度を3/4倍程度にする (20 -> 15)
-    if (source.preferredFreshness === 'new' || true) { 
-         if (video.uploadedAt.includes('分前') || video.uploadedAt.includes('時間前') || video.uploadedAt.includes('日前')) {
-            score += 15;
-        }
+    // --- Trick 10: Freshness Bonus (新着ブースト) ---
+    if (video.uploadedAt.includes('分前') || video.uploadedAt.includes('時間前')) {
+        score += 20;
     }
 
-    // Context Match
-    if (source.searchHistory.length > 0) {
-        // 簡易的なコンテキスト一致
-        const recentSearches = source.searchHistory.slice(0, 5);
-        if (recentSearches.some(s => fullText.includes(s.toLowerCase()))) {
-             score += 30;
-        }
-    }
-    
-    // Japanese Content Priority (User Requirement)
+    // --- Trick 11: Japanese Priority (日本語優先) ---
     if (containsJapanese(fullText)) {
-        score += 50; // 大きくスコアを加算して日本語動画を優先
+        score += 30;
     }
 
     return { isValid: true, score, reasons };
 };
 
-
 export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSource): Promise<Video[]> => {
     const { 
         searchHistory, watchHistory, subscribedChannels, 
-        preferredGenres, preferredChannels, 
-        page 
+        preferredGenres, page 
     } = sources;
-    
-    // ---------------------------------------------------------
-    // 1. Query Generation (Weighted Random Strategy)
-    // YouTubeのように多様なソースから確率的にクエリを選択し、バランスの良いフィードを作る
-    // ---------------------------------------------------------
     
     const queries: Set<string> = new Set();
     
-    // 取得するクエリの総数
-    // ページ1の場合は速度優先でクエリを減らす (3), それ以降は多様性重視 (8)
-    const TOTAL_QUERIES = page === 1 ? 3 : 8;
+    // --- Trick 12: 取得クエリ数の増加 (より多くのソースから集める) ---
+    const TOTAL_QUERIES = page === 1 ? 6 : 10;
     
-    // ソース群の定義と重み付け（動的に計算）
-    
-    const hasHistory = watchHistory.length > 0 || searchHistory.length > 0;
-    const hasSubs = subscribedChannels.length > 1; 
+    // 重み付けロジック
+    let wHistory = 30;
+    let wSubs = 20;
+    let wTrending = 25; // 急上昇の重要度アップ
+    let wDiversity = 25; // 多様性の重要度アップ
 
-    let wHistory = 40;
-    let wSubs = 25;
-    let wFresh = 15;
-    let wKeywords = 10;
-    let wDiscovery = 5;
-    let wHashtags = 20; // New source for popular hashtags
-
-    // ユーザーデータに基づく自動調整
-    if (hasHistory) {
-        if (watchHistory.length > 30) wHistory += 10;
-        if (watchHistory.length > 100) wHistory += 10;
-    } else {
-        wHistory = 5;
-        wDiscovery += 10;
-        wFresh += 10;
-        wHashtags += 15; // 新規ユーザーには人気のハッシュタグを多めに
-    }
-
-    if (hasSubs) {
-        if (subscribedChannels.length > 5) wSubs += 10;
-        if (subscribedChannels.length > 20) wSubs += 10;
-    } else {
+    // --- Trick 13: 新規ユーザー/ヘビーユーザーの動的重み調整 ---
+    if (watchHistory.length === 0 && subscribedChannels.length <= 1) {
+        wHistory = 0;
         wSubs = 0;
-        wDiscovery += 10;
-        wFresh += 5;
+        wTrending = 50;
+        wDiversity = 50;
     }
 
     const querySources = [
         { type: 'history', weight: wHistory }, 
         { type: 'subs', weight: wSubs },
-        { type: 'fresh', weight: wFresh },
-        { type: 'hashtags', weight: wHashtags },
-        { type: 'keywords', weight: wKeywords }, 
-        { type: 'discovery', weight: wDiscovery } 
+        { type: 'trending', weight: wTrending },
+        { type: 'diversity', weight: wDiversity }
     ];
 
     const getRandomSourceType = () => {
@@ -235,36 +211,30 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
             if (random < source.weight) return source.type;
             random -= source.weight;
         }
-        return 'discovery';
+        return 'diversity';
     };
 
-    // クエリ生成ループ
     for (let i = 0; i < TOTAL_QUERIES; i++) {
         const type = getRandomSourceType();
-        const randomTopics = ['Music', 'Gaming', 'Vlog', 'Live', 'News', 'Tech', 'Art', 'Cat', 'Cooking', 'Anime', 'Japan', 'Travel'];
-        const randomTopic = randomTopics[Math.floor(Math.random() * randomTopics.length)];
 
         switch (type) {
             case 'history':
-                // 履歴からキーワードを抽出
-                if (watchHistory.length > 0 || searchHistory.length > 0) {
-                    const useWatch = watchHistory.length > 0 && (searchHistory.length === 0 || Math.random() > 0.4);
-                    if (useWatch) {
-                        const historyPoolSize = Math.min(watchHistory.length, 50);
-                        const randomVideo = watchHistory[Math.floor(Math.random() * historyPoolSize)];
-                        const kws = extractKeywords(randomVideo.title);
-                        if (kws.length > 0) {
-                            queries.add(kws[Math.floor(Math.random() * kws.length)]);
+                if (watchHistory.length > 0) {
+                    // --- Trick 14: インバースヒストリー (見た履歴と"逆"または少しずらした提案はAPI検索では難しいが、関連動画から辿る) ---
+                    const randomVideo = watchHistory[Math.floor(Math.random() * Math.min(watchHistory.length, 20))];
+                    // タイトル全体ではなく、キーワード抽出して検索
+                    const kws = extractKeywords(randomVideo.title);
+                    if (kws.length > 0) {
+                        const kw = kws[Math.floor(Math.random() * kws.length)];
+                        // --- Trick 3 (適用): 類語展開 ---
+                        if (QUERY_EXPANSIONS[kw]) {
+                            queries.add(QUERY_EXPANSIONS[kw][Math.floor(Math.random() * QUERY_EXPANSIONS[kw].length)]);
                         } else {
-                            queries.add(randomVideo.channelName);
+                            queries.add(kw);
                         }
-                    } else {
-                        const searchPoolSize = Math.min(searchHistory.length, 20);
-                        const randomSearch = searchHistory[Math.floor(Math.random() * searchPoolSize)];
-                        if (randomSearch) queries.add(randomSearch);
                     }
-                } else {
-                    queries.add('New Trend');
+                } else if (searchHistory.length > 0) {
+                    queries.add(searchHistory[Math.floor(Math.random() * searchHistory.length)]);
                 }
                 break;
             
@@ -272,67 +242,54 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
                 if (subscribedChannels.length > 0) {
                     const randomChannel = subscribedChannels[Math.floor(Math.random() * subscribedChannels.length)];
                     queries.add(randomChannel.name);
-                } else {
-                     queries.add('Popular');
                 }
                 break;
             
-            case 'fresh':
-                // 新規動画を狙うクエリ
-                 if (Math.random() > 0.3) {
-                    queries.add(`最新 ${randomTopic}`);
-                } else {
-                    queries.add(`New ${randomTopic}`);
-                }
+            case 'trending':
+                // --- Trick 15: トレンドキーワードの注入 ---
+                // API側で急上昇を取得するが、検索ワードとしても人気タグを使う
+                queries.add("急上昇");
                 break;
-            
-            case 'hashtags':
-                 queries.add(POPULAR_JP_TAGS[Math.floor(Math.random() * POPULAR_JP_TAGS.length)]);
-                 break;
 
-            case 'keywords':
-                 if (preferredGenres.length > 0) {
-                     queries.add(preferredGenres[Math.floor(Math.random() * preferredGenres.length)]);
-                 } else {
-                     queries.add('Music');
-                 }
-                 break;
-
-            case 'discovery':
+            case 'diversity':
             default:
-                 queries.add(randomTopic);
-                 break;
+                // --- Trick 16: 時間・曜日・ランダムトピックの混合 ---
+                const r = Math.random();
+                if (r < 0.3) queries.add(getTimeBasedTopic());
+                else if (r < 0.5) queries.add(getDayBasedTopic());
+                else queries.add(DIVERSITY_TOPICS[Math.floor(Math.random() * DIVERSITY_TOPICS.length)]);
+                break;
         }
     }
 
-    // If no queries generated (fresh user), add defaults
     if (queries.size === 0) {
-        queries.add('Trending');
-        queries.add('Japan');
-        queries.add('Anime');
+        queries.add('Trending Japan');
+        queries.add('Music');
     }
 
-    // ---------------------------------------------------------
-    // 2. Fetching & Merging
-    // ---------------------------------------------------------
+    // --- Trick 17: 急上昇動画の直接取得とマージ ---
+    // 検索APIだけでなく、急上昇エンドポイントを並行して叩く
     const queryArray = Array.from(queries);
     const fetchPromises = queryArray.map(q => 
         searchVideos(q, page.toString())
         .then(res => res.videos)
-        .catch(e => { console.warn(`Failed to fetch for query: ${q}`, e); return []; })
+        .catch(e => { console.warn(`Query failed: ${q}`, e); return []; })
     );
 
-    // 登録チャンネルの最新動画も少し混ぜる
+    // ページ1の場合は必ず急上昇を含める
+    const trendingPromise = (page === 1 || Math.random() > 0.5) 
+        ? getRecommendedVideos().then(res => res.videos).catch(() => [])
+        : Promise.resolve([]);
+
+    // 登録チャンネルの動画も含める
     const subPromises = subscribedChannels.length > 0 
-        ? shuffleArray(subscribedChannels).slice(0, 2).map(c => getChannelVideos(c.id).then(res => res.videos).catch(() => []))
+        ? shuffleArray(subscribedChannels).slice(0, 3).map(c => getChannelVideos(c.id).then(res => res.videos).catch(() => []))
         : [];
 
-    const allResults = await Promise.all([...fetchPromises, ...subPromises]);
+    const allResults = await Promise.all([...fetchPromises, trendingPromise, ...subPromises]);
     const candidates = allResults.flat();
     
-    // ---------------------------------------------------------
-    // 3. Validation, Deduplication & Scoring
-    // ---------------------------------------------------------
+    // --- Trick 18: 重複排除とスコアリング ---
     const validVideos: Video[] = [];
     const seenIds = new Set<string>();
     
@@ -342,20 +299,28 @@ export const getDeeplyAnalyzedRecommendations = async (sources: RecommendationSo
 
         const validation = validateVideo(video, sources);
         if (validation.isValid) {
-            // 日本語動画などを優先するため、スコアを保持して後でソートに使用する
             (video as any)._score = validation.score;
             validVideos.push(video);
         }
     }
     
-    // スコアで降順ソート（日本語動画などが上位に来るようにする）
-    validVideos.sort((a, b) => ((b as any)._score || 0) - ((a as any)._score || 0));
-    
-    // 上位の結果を優先しつつ、ランダム性を維持するためにトップ層を抽出してシャッフル
-    const topVideos = validVideos.slice(0, 60);
+    // --- Trick 19: 同一チャンネルの出現制限 (Diversity Enforcement) ---
+    const channelCounts: Record<string, number> = {};
+    const filteredVideos = validVideos.filter(v => {
+        // 1ページあたり、同じチャンネルは2つまで
+        const count = channelCounts[v.channelId] || 0;
+        if (count >= 2) return false;
+        channelCounts[v.channelId] = count + 1;
+        return true;
+    });
 
-    // ---------------------------------------------------------
-    // 4. Final Shuffle
-    // ---------------------------------------------------------
+    // スコア順にソート
+    filteredVideos.sort((a, b) => ((b as any)._score || 0) - ((a as any)._score || 0));
+    
+    // 上位から候補を選出
+    const topVideos = filteredVideos.slice(0, 60);
+
+    // --- Trick 20: エントロピー注入 (完全なスコア順ではなく、少しシャッフルして「ゆらぎ」を持たせる) ---
+    // 完全にランダムだと質が下がるので、上位グループ内でシャッフル
     return shuffleArray(topVideos);
 };
