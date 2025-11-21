@@ -152,31 +152,26 @@ const HomePage: React.FC = () => {
             }
 
             if (aiVideos.length > 0) {
+                // To prevent flickering, append AI videos instead of splicing them in.
+                // This satisfies the user request to "stack new videos at the bottom".
                 setFeed(currentFeed => {
-                    // Safety check inside setter
+                    // Safety check to prevent multiple appends on re-renders
                     if (currentFeed.some(v => v.isAiRecommended)) return currentFeed;
 
-                    const newFeed = [...currentFeed];
-                    // Insert 1 AI video roughly every 5 items (approx 20% mix)
-                    aiVideos.slice(0, Math.ceil(newFeed.length / 5)).forEach((v, i) => {
-                        const pos = 4 + (i * 5); 
-                        if (pos < newFeed.length) {
-                            newFeed.splice(pos, 0, v);
-                        } else {
-                            newFeed.push(v);
-                        }
-                    });
-                    
-                    // Re-deduplicate based on ID
-                    const seen = new Set<string>();
-                    const uniqueFeed: Video[] = [];
-                    for(const v of newFeed) {
-                        if(!seen.has(v.id)) {
-                            seen.add(v.id);
-                            uniqueFeed.push(v);
-                        }
+                    // Get IDs of videos already in the feed for quick lookup
+                    const existingIds = new Set(currentFeed.map(v => v.id));
+
+                    // Filter out any AI-recommended videos that are already present
+                    const newAiVideos = aiVideos.filter(v => !existingIds.has(v.id));
+
+                    // Add a proportional number of AI videos (approx. 20%) to the end of the feed
+                    const videosToAppend = newAiVideos.slice(0, Math.ceil(currentFeed.length / 5));
+
+                    if (videosToAppend.length > 0) {
+                        return [...currentFeed, ...videosToAppend];
                     }
-                    return uniqueFeed;
+                    
+                    return currentFeed;
                 });
             }
         } catch (e) {

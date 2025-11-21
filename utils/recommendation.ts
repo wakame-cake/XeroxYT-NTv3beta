@@ -146,8 +146,9 @@ export const getXraiRecommendations = async (sources: RecommendationSource): Pro
         mode: sources.preferredGenres.length > 0 ? 'discovery' : 'comfort'
     });
 
-    // Return top ranked results
-    return rankedVideos.slice(0, 50);
+    // Shuffle the top ranked results to introduce variety and feel more random,
+    // while still being based on a high-quality candidate pool.
+    return shuffleArray(rankedVideos.slice(0, 50));
 };
 
 // --- Legacy Engine (Fallback) ---
