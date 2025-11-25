@@ -106,8 +106,9 @@ const VideoPlayerPage: React.FC = () => {
                 .then(details => {
                     if (isMounted) {
                         setVideoDetails(details);
+                        // Initial fallback related videos from internal API if needed
                         if (details.relatedVideos && details.relatedVideos.length > 0) {
-                            setRelatedVideos(details.relatedVideos);
+                            setRelatedVideos(prev => prev.length === 0 ? details.relatedVideos : prev);
                         }
                         addVideoToHistory(details);
                         setIsLoading(false);
@@ -132,7 +133,7 @@ const VideoPlayerPage: React.FC = () => {
                     console.warn("Failed to fetch comments", err);
                 });
 
-            // 3. External Related Videos (Background)
+            // 3. External Related Videos (Priority for Right Side)
             getExternalRelatedVideos(videoId)
                 .then(externalRelated => {
                     if (isMounted && externalRelated && externalRelated.length > 0) {
