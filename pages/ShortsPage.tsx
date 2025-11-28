@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ShortsPlayer from '../components/ShortsPlayer';
 import { getPlayerConfig, getComments, parseDuration } from '../utils/api';
 import { getXraiShorts } from '../utils/recommendation';
@@ -33,7 +33,6 @@ const ShortsPage: React.FC = () => {
     const { ngKeywords, ngChannels, hiddenVideos, negativeKeywords, addHiddenVideo, addNgChannel } = usePreference();
     
     const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleNext = useCallback(() => {
         setCurrentIndex(prev => (prev < videos.length - 1 ? prev + 1 : prev));
@@ -55,7 +54,7 @@ const ShortsPage: React.FC = () => {
         
         try {
             if (isInitial) {
-                const params = await getPlayerConfig().then(p => p.replace(/&?autoplay=[01]/g, "") + "&playsinline=1");
+                const params = await getPlayerConfig();
                 setPlayerParams(params);
             }
             
@@ -97,8 +96,21 @@ const ShortsPage: React.FC = () => {
         setShowComments(false);
         setComments([]);
     }, [currentIndex]);
+    
+    const extendedParams = useMemo(() => {
+        if (!playerParams) return '';
+        let params = playerParams.replace(/&?autoplay=[01]/g, "") + "&playsinline=1&autoplay=1";
+        
+        if (isAutoplayOn && videos.length > 0) {
+            const playlistIds = videos.slice(currentIndex).map(v => v.id).join(',');
+            if (playlistIds) {
+                params += `&playlist=${playlistIds}`;
+            }
+        }
+        return params;
+    }, [playerParams, isAutoplayOn, videos, currentIndex]);
 
-    // History & Autoplay logic
+    // History saving logic
     useEffect(() => {
         const video = videos[currentIndex];
         if (!video) return;
@@ -106,20 +118,15 @@ const ShortsPage: React.FC = () => {
         const durationSec = parseDuration(video.isoDuration, video.duration);
         if (durationSec === 0) return;
 
-        const historyTimer = setTimeout(() => { addShortToHistory(video); }, (durationSec * 1000) / 2);
-        
-        if (autoplayTimerRef.current) clearTimeout(autoplayTimerRef.current);
-        if (isAutoplayOn && durationSec > 0) {
-            autoplayTimerRef.current = setTimeout(() => {
-                handleNext();
-            }, durationSec * 1000 + 500);
-        }
+        // Save to history after 50% watch time
+        const historyTimer = setTimeout(() => {
+            addShortToHistory(video);
+        }, (durationSec * 1000) / 2);
 
         return () => {
             clearTimeout(historyTimer);
-            if (autoplayTimerRef.current) clearTimeout(autoplayTimerRef.current);
         };
-    }, [currentIndex, videos, addShortToHistory, isAutoplayOn, handleNext]);
+    }, [currentIndex, videos, addShortToHistory]);
     
     const handleToggleComments = async () => {
         const willBeOpen = !showComments;
@@ -189,7 +196,6 @@ const ShortsPage: React.FC = () => {
     if (videos.length === 0 || !playerParams) return <div className="text-center p-8">No shorts found.</div>;
 
     const currentVideo = videos[currentIndex];
-    const extendedParams = `${playerParams}&autoplay=1`;
     const isTransparentTheme = theme.includes('glass');
     const bgClass = isTransparentTheme ? 'bg-transparent' : 'bg-yt-white dark:bg-yt-black';
 

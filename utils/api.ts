@@ -94,30 +94,90 @@ export async function getPlayerConfig(): Promise<string> {
 
 // --- DATA MAPPING HELPERS ---
 export const mapYoutubeiVideoToVideo = (item: any): Video | null => {
-    if (!item?.id) return null;
-    
+    if (!item) return null;
+
+    // Use a chain of possible ID fields
+    const videoId = item.id || item.videoId || item.content_id;
+    if (!videoId || typeof videoId !== 'string') return null;
+
+    // --- Title ---
+    const title = item.title?.text ?? 
+                  item.title?.simpleText ?? 
+                  item.metadata?.title?.text ?? 
+                  item.title ?? 
+                  '無題の動画';
+
+    // --- Thumbnails ---
+    const thumbs = item.thumbnails || item.thumbnail || item.content_image;
+    let thumbnailUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`; // Fallback
+    if (Array.isArray(thumbs) && thumbs.length > 0) {
+        thumbnailUrl = thumbs[0].url;
+    } else if (thumbs?.url) {
+        thumbnailUrl = thumbs.url;
+    }
+    if (thumbnailUrl) thumbnailUrl = thumbnailUrl.split('?')[0];
+
+    // --- Duration ---
+    // Handle overlays from different item types
+    const durationOverlay = (item.thumbnail_overlays || []).find((o: any) => o.type === 'ThumbnailOverlayTimeStatus');
+    const duration = item.duration?.text ?? 
+                     item.length?.simpleText ?? 
+                     durationOverlay?.text ?? 
+                     '';
+    const isoDuration = `PT${item.duration?.seconds ?? 0}S`;
+
+    // --- Views & Date ---
     let views = '視聴回数不明';
-    if (item.view_count?.text) {
-        views = `${formatJapaneseNumber(item.view_count.text)}回視聴`;
-    } else if (item.short_view_count?.text) {
-        views = item.short_view_count.text;
+    let uploadedAt = '';
+
+    // Standard path (CompactVideo, etc.)
+    if (item.view_count?.text || item.short_view_count?.text) {
+        views = item.view_count.text ?? item.short_view_count.text;
     } else if (item.views?.text) {
-        // Handle ReelItem shorts views
-        views = item.views.text;
+        views = item.views.text; // ReelItem
+    }
+    uploadedAt = item.published?.text ?? '';
+
+    // LockupView path
+    const metadata_rows = item.metadata?.metadata?.metadata_rows;
+    if (Array.isArray(metadata_rows) && metadata_rows.length > 1) {
+        // Example: [{"metadata_parts": [{"text": "oricon"}]}, {"metadata_parts": [{"text": "22万 回視聴"}, {"text": "8 年前"}]}]
+        if (metadata_rows[1]?.metadata_parts?.[0]?.text?.text) {
+            views = metadata_rows[1].metadata_parts[0].text.text;
+        }
+        if (metadata_rows[1]?.metadata_parts?.[1]?.text?.text) {
+            uploadedAt = metadata_rows[1].metadata_parts[1].text.text;
+        }
     }
 
+    // --- Channel Info ---
+    const author = item.author || item.channel;
+    let channelName = author?.name ?? '不明なチャンネル';
+    let channelId = author?.id ?? '';
+    let channelAvatarUrl = author?.thumbnails?.[0]?.url ?? '';
+
+    // LockupView path for channel name
+    if (Array.isArray(metadata_rows) && metadata_rows.length > 0) {
+        if (metadata_rows[0]?.metadata_parts?.[0]?.text?.text) {
+            channelName = metadata_rows[0].metadata_parts[0].text.text;
+        }
+    }
+
+    // --- Description ---
+    const descriptionSnippet = item.description_snippet?.text ?? '';
+
     return {
-        id: item.id,
-        thumbnailUrl: item.thumbnails?.[0]?.url.split('?')[0] ?? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
-        duration: item.duration?.text ?? '',
-        isoDuration: `PT${item.duration?.seconds ?? 0}S`,
-        title: item.title?.text ?? item.title ?? '無題の動画',
-        channelName: item.author?.name ?? item.channel?.name ?? '不明なチャンネル',
-        channelId: item.author?.id ?? item.channel?.id ?? '',
-        channelAvatarUrl: item.author?.thumbnails?.[0]?.url ?? item.channel?.thumbnails?.[0]?.url ?? '',
+        id: videoId,
+        thumbnailUrl: thumbnailUrl,
+        duration: duration,
+        isoDuration: isoDuration,
+        title: title,
+        channelName: channelName,
+        channelId: channelId,
+        channelAvatarUrl: channelAvatarUrl,
         views: views,
-        uploadedAt: formatJapaneseDate(item.published?.text ?? ''),
-        descriptionSnippet: item.description_snippet?.text ?? '',
+        uploadedAt: formatJapaneseDate(uploadedAt),
+        descriptionSnippet: descriptionSnippet,
     };
 };
 

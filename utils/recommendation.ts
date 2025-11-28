@@ -58,8 +58,7 @@ export const getXraiRecommendations = async (sources: RecommendationSource): Pro
     const filterAndDedupe = (videos: Video[]): Video[] => {
         return videos.filter(v => {
             if (seenIds.has(v.id)) return false;
-            seenIds.add(v.id);
-
+            
             const fullText = `${v.title} ${v.channelName}`.toLowerCase();
 
             if (ngKeywords.some(ng => fullText.includes(ng.toLowerCase()))) return false;
@@ -74,6 +73,7 @@ export const getXraiRecommendations = async (sources: RecommendationSource): Pro
             });
             if (negativeScore > 2) return false;
             
+            seenIds.add(v.id);
             return true;
         });
     };
@@ -98,23 +98,35 @@ export const getXraiRecommendations = async (sources: RecommendationSource): Pro
     
     const [trendingContent, personalizedResults] = await Promise.all([trendingPromise, Promise.all(searchPromises)]);
 
-    const personalizedVideos = personalizedResults.flatMap(r => r.videos);
-    const personalizedShorts = personalizedResults.flatMap(r => r.shorts);
-
-    // 3. Separate & Filter Trending Content
-    const trendingVideos: Video[] = [];
-    const trendingShorts: Video[] = [];
+    // 3. Separate ALL content into videos and shorts FIRST
+    const allTrendingVideos: Video[] = [];
+    const allTrendingShorts: Video[] = [];
     for (const v of trendingContent) {
         if (isShortVideo(v)) {
-            trendingShorts.push(v);
+            allTrendingShorts.push(v);
         } else {
-            trendingVideos.push(v);
+            allTrendingVideos.push(v);
         }
     }
 
-    // 4. Mix Videos
-    const cleanTrendingVideos = filterAndDedupe(trendingVideos);
-    const cleanPersonalizedVideos = filterAndDedupe(personalizedVideos);
+    const allPersonalizedVideos: Video[] = [];
+    const allPersonalizedShorts: Video[] = [...personalizedResults.flatMap(r => r.shorts)];
+    const personalizedVideosFromSearch = personalizedResults.flatMap(r => r.videos);
+    for (const v of personalizedVideosFromSearch) {
+        if (isShortVideo(v)) {
+            allPersonalizedShorts.push(v);
+        } else {
+            allPersonalizedVideos.push(v);
+        }
+    }
+
+    // 4. Filter and Dedupe
+    const cleanTrendingVideos = filterAndDedupe(allTrendingVideos);
+    const cleanPersonalizedVideos = filterAndDedupe(allPersonalizedVideos);
+    const cleanTrendingShorts = filterAndDedupe(allTrendingShorts);
+    const cleanPersonalizedShorts = filterAndDedupe(allPersonalizedShorts);
+
+    // 5. Mix Videos
     const numTrending = Math.floor(TARGET_VIDEOS * TRENDING_VIDEO_RATIO);
     const numPersonalized = TARGET_VIDEOS - numTrending;
     
@@ -123,10 +135,10 @@ export const getXraiRecommendations = async (sources: RecommendationSource): Pro
         ...shuffleArray(cleanPersonalizedVideos).slice(0, numPersonalized)
     ]);
 
-    // 5. Mix Shorts
+    // 6. Mix Shorts
     const finalShorts = shuffleArray([
-        ...filterAndDedupe(trendingShorts),
-        ...filterAndDedupe(personalizedShorts)
+        ...shuffleArray(cleanTrendingShorts),
+        ...shuffleArray(cleanPersonalizedShorts)
     ]).slice(0, TARGET_SHORTS);
 
     return { videos: finalVideos, shorts: finalShorts };
