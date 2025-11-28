@@ -1,7 +1,7 @@
+
 import React from 'react';
 import type { Video } from '../types';
 import * as ReactRouterDOM from 'react-router-dom';
-import { LikeIcon, MoreIconHorizontal, CommentIcon } from './icons/Icons';
 
 const { Link } = ReactRouterDOM;
 
@@ -11,8 +11,6 @@ interface ShortsPlayerProps {
 }
 
 const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ video, playerParams }) => {
-    const viewsText = video.views.includes('不明') ? '...' : video.views.split('回')[0];
-
     return (
         <div className="h-full w-full relative flex-shrink-0 bg-yt-black group">
             <iframe
@@ -36,21 +34,6 @@ const ShortsPlayer: React.FC<ShortsPlayerProps> = ({ video, playerParams }) => {
                     </button>
                 </div>
                 <p className="mt-3 text-sm line-clamp-2 drop-shadow-md">{video.title}</p>
-            </div>
-
-            {/* Side Actions */}
-            <div className="absolute bottom-20 right-2 flex flex-col items-center space-y-6 pointer-events-auto">
-                <button className="flex flex-col items-center p-3 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-sm transition-colors">
-                    <LikeIcon />
-                    <span className="text-xs mt-1 font-medium">{viewsText}</span>
-                </button>
-                <button className="flex flex-col items-center p-3 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-sm transition-colors">
-                    <CommentIcon />
-                    <span className="text-xs mt-1 font-medium">...</span>
-                </button>
-                <button className="p-3 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-sm transition-colors">
-                    <MoreIconHorizontal />
-                </button>
             </div>
         </div>
     );
