@@ -363,44 +363,25 @@ app.get('/api/playlist', async (req, res) => {
   }
 });
 
-import { Innertube } from "youtubei.js";
+app.get('/api/shorts', async (req, res) => {
+  try {
+    const youtube = await createYoutube();
+    const { id } = req.query;
+    if (!id) return res.status(400).json({ error: "Missing channel id" });
 
-const yt = await Innertube.create();
+    const channel = await youtube.getChannel(id);
 
-async function getShortsPages(channelId, pages = 1) {
-  const channel = await yt.getChannel(channelId);
-  const shortsTab = channel.tabs.find(t => t.title === "Shorts");
+    // ★ これが Shorts タブの正式取得方法
+    const shortsFeed = await channel.getShorts();
 
-  if (!shortsTab) return { shorts: [], reason: "Shorts tab not found" };
+    // ここを一切加工せず丸ごと返す（完全RAW）
+    res.status(200).json(shortsFeed);
 
-  // 1ページ目
-  let current = await shortsTab.content();
-  let results = [...current.items];
-
-  // 続きのページ
-  for (let i = 1; i < pages; i++) {
-    if (!current.continuation)
-      break; // 次のページがない
-
-    current = await current.getContinuation();
-    results.push(...current.items);
+  } catch (err) {
+    console.error("Error in /api/shorts:", err);
+    res.status(500).json({ error: err.message });
   }
-
-  return {
-    shorts: results.map(s => ({
-      id: s.id,
-      title: s.title?.text,
-      thumbnails: s.thumbnails,
-      view_count: s.view_count
-    }))
-  };
-}
-
-const data = await getShortsPages("UC80ttKvARb7Gslo7AgPOZeA", 3); // page3まで取得
-console.log(data);
-
-
-
+});
 
 
 // -------------------------------------------------------------------
