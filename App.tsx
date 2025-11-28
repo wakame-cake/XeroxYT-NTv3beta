@@ -80,7 +80,8 @@ const App: React.FC = () => {
         />
         <div className="flex">
             {shouldShowSidebar() && <Sidebar isOpen={isSidebarOpen} />}
-            <main key={location.pathname} className={`flex-1 mt-14 ${mainContentMargin} ${mainContentPadding} transition-all duration-300 ease-in-out ml-0 overflow-x-hidden animate-fade-in-main`}>
+            {/* FIX: Removed key={location.pathname} to prevent full re-renders on URL changes (especially for Shorts navigation) */}
+            <main className={`flex-1 mt-14 ${mainContentMargin} ${mainContentPadding} transition-all duration-300 ease-in-out ml-0 overflow-x-hidden animate-fade-in-main`}>
             <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/watch/:videoId" element={<VideoPlayerPage />} />

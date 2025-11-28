@@ -62,6 +62,7 @@ const ShortsPage: React.FC = () => {
         }
     };
 
+    // Play/Pause Control based on current index
     useEffect(() => {
         const currentVideo = videos[currentIndex];
         if (!currentVideo) return;
@@ -75,6 +76,16 @@ const ShortsPage: React.FC = () => {
         });
     }, [currentIndex, videos]);
 
+    // URL Sync: Handle browser back/forward or external navigation
+    useEffect(() => {
+        if (videoId && videos.length > 0) {
+            const index = videos.findIndex(v => v.id === videoId);
+            if (index !== -1 && index !== currentIndex) {
+                setCurrentIndex(index);
+            }
+        }
+    }, [videoId, videos]); // Do not include currentIndex to prevent loops
+
     const fetchMoreShorts = useCallback(async () => {
         if (isFetchingMore) return;
         setIsFetchingMore(true);
@@ -85,7 +96,7 @@ const ShortsPage: React.FC = () => {
                 const shorts = await getXraiShorts({ 
                     searchHistory, watchHistory, shortsHistory, subscribedChannels, 
                     ngKeywords, ngChannels, hiddenVideos, negativeKeywords, 
-                    page: Math.floor(videos.length / 30) + 1, // Adjusted for larger batch
+                    page: Math.floor(videos.length / 30) + 1, 
                     seenIds: currentSeenIds
                 });
                 
@@ -106,6 +117,14 @@ const ShortsPage: React.FC = () => {
     // Initial Data Fetch Logic
     useEffect(() => {
         const init = async () => {
+            // If we already have videos and the current video is in the list, don't re-init.
+            // This prevents "blue spinner" when App.tsx keeps component alive but logic re-runs.
+            if (videos.length > 0) {
+                if (videoId && videos.some(v => v.id === videoId)) {
+                    return;
+                }
+            }
+
             setIsLoading(true);
             setError(null);
             
@@ -175,23 +194,24 @@ const ShortsPage: React.FC = () => {
             }
         };
 
+        // Only run init if we strictly need to (empty list or new context)
         if (videos.length === 0) {
             init();
         }
-    }, [videoId, context]);
+    }, [videoId, context]); // Keep dependency minimal to avoid loops
 
     // --- Pre-fetching Logic ---
     useEffect(() => {
         if (videos.length > 0 && context?.type !== 'channel') {
             const remainingVideos = videos.length - 1 - currentIndex;
-            // 常に10個先までDOMにマウントするため、残りが15個を切ったら早めに取得する
+            // Buffer: 15 items
             if (remainingVideos < 15 && !isFetchingMore && !isLoading) {
                 fetchMoreShorts();
             }
         }
     }, [currentIndex, videos.length, isFetchingMore, isLoading, context, fetchMoreShorts]);
 
-    // Update URL
+    // Update URL on Swipe/Navigation
     useEffect(() => {
         if (videos[currentIndex] && videos[currentIndex].id !== videoId) {
             navigate(`/shorts/${videos[currentIndex].id}`, { replace: true, state: location.state });
@@ -216,7 +236,7 @@ const ShortsPage: React.FC = () => {
         });
     }, []);
     
-    // Reset comments
+    // Reset comments when index changes
     useEffect(() => {
         setShowComments(false);
         setComments([]);
@@ -284,7 +304,7 @@ const ShortsPage: React.FC = () => {
         };
     }, [handleNext, handlePrev]);
 
-    if (isLoading) return <div className="flex justify-center items-center h-[calc(100vh-64px)]"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-yt-blue"></div></div>;
+    if (isLoading && videos.length === 0) return <div className="flex justify-center items-center h-[calc(100vh-64px)]"><div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-yt-blue"></div></div>;
     if (error) return <div className="text-center text-red-500 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg m-4">{error}</div>;
     if (videos.length === 0 || !playerParams) return <div className="text-center p-8">No shorts found.</div>;
 
