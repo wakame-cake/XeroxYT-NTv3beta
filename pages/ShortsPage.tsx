@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import ShortsPlayer from '../components/ShortsPlayer';
 import { getPlayerConfig, getComments, parseDuration, getChannelShorts, getVideoDetails } from '../utils/api';
 import { getXraiShorts } from '../utils/recommendation';
@@ -197,12 +197,6 @@ const ShortsPage: React.FC = () => {
             const newIndex = Math.min(prevIndex + 1, videos.length - 1);
             if (newIndex === prevIndex) return prevIndex;
 
-            const prevVideo = videos[prevIndex];
-            if (prevVideo) {
-                const prevIframe = iframeRefs.current.get(prevVideo.id);
-                sendCommand(prevIframe || null, 'pauseVideo');
-            }
-
             const nextVideo = videos[newIndex];
             if (nextVideo) {
                 setTimeout(() => {
@@ -219,12 +213,6 @@ const ShortsPage: React.FC = () => {
         setCurrentIndex(prevIndex => {
             const newIndex = Math.max(prevIndex - 1, 0);
             if (newIndex === prevIndex) return prevIndex;
-
-            const prevVideo = videos[prevIndex];
-            if (prevVideo) {
-                const prevIframe = iframeRefs.current.get(prevVideo.id);
-                sendCommand(prevIframe || null, 'pauseVideo');
-            }
 
             const nextVideo = videos[newIndex];
             if (nextVideo) {
@@ -300,10 +288,18 @@ const ShortsPage: React.FC = () => {
 
     return (
         <div className={`shorts-container flex justify-center items-center h-[calc(100vh-3.5rem)] w-full overflow-hidden relative ${theme.includes('glass') ? 'bg-transparent' : 'bg-yt-white dark:bg-yt-black'}`}>
+            {context?.type === 'channel' && context.channelId && (
+                <Link
+                    to={`/channel/${context.channelId}`}
+                    className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-black/40 text-white text-sm font-semibold rounded-full backdrop-blur-sm hover:bg-black/60 transition-colors"
+                >
+                    チャンネルページに戻る
+                </Link>
+            )}
             <button
                 onClick={handlePrev}
                 disabled={currentIndex === 0}
-                className={`absolute left-4 md:left-[calc(50%-25rem)] top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-sm transition-all shadow-lg flex items-center justify-center ${currentIndex === 0 ? 'opacity-0 cursor-not-allowed' : 'opacity-70 hover:opacity-100 hover:scale-110 active:scale-95'}`}
+                className="absolute left-4 md:left-[calc(50%-25rem)] top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-sm transition-all shadow-lg flex items-center justify-center opacity-70 hover:opacity-100 hover:scale-110 active:scale-95 disabled:opacity-0 disabled:cursor-not-allowed"
                 title="前の動画"
             >
                 <ChevronUpIcon />
@@ -313,7 +309,8 @@ const ShortsPage: React.FC = () => {
                 <div className="relative h-[85vh] max-h-[900px] aspect-[9/16] rounded-2xl shadow-2xl overflow-hidden bg-black flex-shrink-0 z-10">
                      {videos.map((video, index) => {
                          // Render previous, current, and next 10 videos for pre-loading
-                         if (index < currentIndex -1 || index > currentIndex + 10) return null;
+                         if (index < currentIndex) return null;
+                         if (index > currentIndex + 10) return null;
                          
                          const isActive = index === currentIndex;
                          
@@ -333,7 +330,8 @@ const ShortsPage: React.FC = () => {
                                         else iframeRefs.current.delete(video.id);
                                     }}
                                     id={video.id}
-                                    video={video} 
+                                    video={video}
+                                    context={context}
                                     playerParams={getParamsForVideo(video.id)} 
                                     onLoad={(e) => {
                                         if (index !== currentIndex) {
@@ -386,7 +384,7 @@ const ShortsPage: React.FC = () => {
             <button
                 onClick={handleNext}
                 disabled={currentIndex >= videos.length - 1 && !isFetchingMore}
-                className={`absolute right-4 md:right-[calc(50%-25rem)] top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-sm transition-all shadow-lg flex items-center justify-center ${currentIndex >= videos.length - 1 && !isFetchingMore ? 'opacity-0 cursor-not-allowed' : 'opacity-70 hover:opacity-100 hover:scale-110 active:scale-95'}`}
+                className="absolute right-4 md:right-[calc(50%-25rem)] top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-black/20 hover:bg-black/40 backdrop-blur-sm transition-all shadow-lg flex items-center justify-center opacity-70 hover:opacity-100 hover:scale-110 active:scale-95 disabled:opacity-0 disabled:cursor-not-allowed"
                 title="次の動画"
             >
                 <ChevronDownIcon />
