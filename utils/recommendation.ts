@@ -195,8 +195,8 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
         "映画ネタ #shorts",
         "#voicevox #shorts",
         "#twitter #shorts",
-        "UCuP7Oceo9kOQ_tyUWadNmJA #shorts"
-        "UCkYqAt7IJVwKCB3QCzdnpCA #shorts"
+        "UCuP7Oceo9kOQ_tyUWadNmJA #shorts",
+        "UCkYqAt7IJVwKCB3QCzdnpCA #shorts",
         "ショートドラマ #shorts",
         "ドラマ #shorts",
         "コント #shorts",
