@@ -191,11 +191,12 @@ export const getXraiShorts = async (sources: RecommendationSource & { seenIds?: 
         "バズってる #shorts", 
         "面白い #shorts", 
         "切り抜き #shorts", 
-        "猫 #shorts", 
-        "犬 #shorts", 
-        "アニメ #shorts", 
-        "歌ってみた #shorts", 
-        "踊ってみた #shorts",
+        "2ch #shorts",
+        "映画ネタ #shorts",
+        "#voicevox #shorts",
+        "#twitter #shorts",
+        "UCuP7Oceo9kOQ_tyUWadNmJA #shorts"
+        "UCkYqAt7IJVwKCB3QCzdnpCA #shorts"
         "ショートドラマ #shorts",
         "ドラマ #shorts",
         "コント #shorts",
