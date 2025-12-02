@@ -1,9 +1,11 @@
 
+
+
 import React, { useRef } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { Link, useSearchParams } from 'react-router-dom';
 import type { Playlist, Video } from '../types';
-import { ShuffleIcon2, RepeatIcon, DragHandleIcon } from './icons/Icons';
+import { ShuffleIcon, RepeatIcon, DragHandleIcon } from './icons/Icons';
 
 interface PlaylistPanelProps {
   playlist: Playlist;
@@ -48,7 +50,7 @@ const PlaylistPanel: React.FC<PlaylistPanelProps> = ({ playlist, videos, current
                 className={`p-2 rounded-full hover:bg-yt-spec-light-20 dark:hover:bg-yt-spec-20 ${isShuffle ? 'text-yt-blue' : ''}`}
                 title="シャッフル"
             >
-                <ShuffleIcon2 className={`w-6 h-6 ${isShuffle ? 'fill-current text-yt-blue' : 'fill-current text-black dark:text-white'}`} />
+                <ShuffleIcon className={`w-6 h-6 ${isShuffle ? 'fill-current text-yt-blue' : 'fill-current text-black dark:text-white'}`} />
             </button>
             <button
                 onClick={toggleLoop}

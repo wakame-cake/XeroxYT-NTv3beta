@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-// FIX: Use named imports for react-router-dom components and hooks.
-import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { getVideoDetails, getPlayerConfig, getComments, getVideosByIds, getExternalRelatedVideos } from '../utils/api';
 import type { VideoDetails, Video, Comment, Channel } from '../types';
 import { useSubscription } from '../contexts/SubscriptionContext';
@@ -17,7 +16,6 @@ import { LikeIcon, SaveIcon, MoreIconHorizontal, ShareIcon, DislikeIcon, Chevron
 const VideoPlayerPage: React.FC = () => {
     const { videoId } = useParams<{ videoId: string }>();
     const [searchParams, setSearchParams] = useSearchParams();
-    const navigate = useNavigate();
     const playlistId = searchParams.get('list');
 
     const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
@@ -27,13 +25,11 @@ const VideoPlayerPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
     const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+    const [playerParams, setPlayerParams] = useState<string | null>(null);
     const [playlistVideos, setPlaylistVideos] = useState<Video[]>([]);
     const [isCollaboratorMenuOpen, setIsCollaboratorMenuOpen] = useState(false);
     const collaboratorMenuRef = useRef<HTMLDivElement>(null);
     
-    // State for player params string instead of YT.Player object
-    const [playerParams, setPlayerParams] = useState<string>('');
-
     const [isShuffle, setIsShuffle] = useState(searchParams.get('shuffle') === '1');
     const [isLoop, setIsLoop] = useState(searchParams.get('loop') === '1');
 
@@ -51,76 +47,11 @@ const VideoPlayerPage: React.FC = () => {
         setIsLoop(searchParams.get('loop') === '1');
     }, [searchParams]);
     
-    // Auto-advance logic for playlist
-    const handleVideoEnd = useCallback(() => {
-        if (!currentPlaylist || playlistVideos.length === 0) return;
-
-        const currentIndex = playlistVideos.findIndex(v => v.id === videoId);
-        let nextIndex = -1;
-
-        if (isShuffle) {
-             // Simple random selection
-             if (playlistVideos.length > 1) {
-                 do {
-                     nextIndex = Math.floor(Math.random() * playlistVideos.length);
-                 } while (nextIndex === currentIndex);
-             } else {
-                 nextIndex = 0;
-             }
-        } else {
-            nextIndex = currentIndex + 1;
-        }
-
-        if (nextIndex >= playlistVideos.length) {
-            if (isLoop) {
-                nextIndex = 0;
-            } else {
-                return; // End of playlist
-            }
-        }
-
-        const nextVideo = playlistVideos[nextIndex];
-        if (nextVideo) {
-            navigate(`/watch/${nextVideo.id}?list=${playlistId}${isShuffle ? '&shuffle=1' : ''}${isLoop ? '&loop=1' : ''}`);
-        }
-    }, [currentPlaylist, playlistVideos, videoId, isShuffle, isLoop, playlistId, navigate]);
-
-    // Listen for messages from the YouTube player iframe to detect when video ends
     useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            if (typeof event.data !== 'string') return;
-            try {
-                const data = JSON.parse(event.data);
-                // "info": 0 corresponds to YT.PlayerState.ENDED
-                if (data.event === 'onStateChange' && data.info === 0) {
-                    handleVideoEnd();
-                }
-            } catch (e) {
-                // Ignore non-JSON messages or other errors
-            }
+        const fetchPlayerParams = async () => {
+            setPlayerParams(await getPlayerConfig());
         };
-
-        window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
-    }, [handleVideoEnd]);
-
-    useEffect(() => {
-        const fetchConfig = async () => {
-            try {
-                const paramsString = await getPlayerConfig();
-                const params = new URLSearchParams(paramsString);
-                
-                // Ensure autoplay is enabled and enablejsapi is set for postMessage events
-                params.set('autoplay', '1');
-                params.set('enablejsapi', '1');
-                
-                setPlayerParams(params.toString());
-            } catch (error) {
-                console.error("Failed to fetch player config, using defaults", error);
-                setPlayerParams('autoplay=1&rel=0&enablejsapi=1');
-            }
-        };
-        fetchConfig();
+        fetchPlayerParams();
     }, []);
 
     useEffect(() => {
@@ -173,9 +104,8 @@ const VideoPlayerPage: React.FC = () => {
                 .then(details => {
                     if (isMounted) {
                         setVideoDetails(details);
-                        // Request: No XRAI, just 20 items whatever they are.
                         if (details.relatedVideos && details.relatedVideos.length > 0) {
-                            setRelatedVideos(details.relatedVideos.slice(0, 20));
+                            setRelatedVideos(details.relatedVideos);
                         }
                         addVideoToHistory(details);
                         setIsLoading(false);
@@ -204,12 +134,7 @@ const VideoPlayerPage: React.FC = () => {
             getExternalRelatedVideos(videoId)
                 .then(externalRelated => {
                     if (isMounted && externalRelated && externalRelated.length > 0) {
-                        // Request: No XRAI, just 20 items whatever they are.
-                        // Overwrite if external source is better or supplementary
-                        setRelatedVideos(prev => {
-                            if (prev.length > 0) return prev; // Keep internal related if available
-                            return externalRelated.slice(0, 20);
-                        });
+                        setRelatedVideos(externalRelated);
                     }
                 })
                 .catch(extErr => {
@@ -223,6 +148,28 @@ const VideoPlayerPage: React.FC = () => {
             isMounted = false;
         };
     }, [videoId, addVideoToHistory]);
+
+    const shuffledPlaylistVideos = useMemo(() => {
+        if (!isShuffle || playlistVideos.length === 0) return playlistVideos;
+        const currentIndex = playlistVideos.findIndex(v => v.id === videoId);
+        if (currentIndex === -1) return [...playlistVideos].sort(() => Math.random() - 0.5);
+        const otherVideos = [...playlistVideos.slice(0, currentIndex), ...playlistVideos.slice(currentIndex + 1)];
+        const shuffledOthers = otherVideos.sort(() => Math.random() - 0.5);
+        return [playlistVideos[currentIndex], ...shuffledOthers];
+    }, [isShuffle, playlistVideos, videoId]);
+
+    const iframeSrc = useMemo(() => {
+        if (!videoDetails?.id || !playerParams) return '';
+        let src = `https://www.youtubeeducation.com/embed/${videoDetails.id}`;
+        let params = playerParams.startsWith('?') ? playerParams.substring(1) : playerParams;
+        if (currentPlaylist && playlistVideos.length > 0) {
+            const videoIdList = (isShuffle ? shuffledPlaylistVideos : playlistVideos).map(v => v.id);
+            const playlistString = videoIdList.join(',');
+            params += `&playlist=${playlistString}`;
+            if(isLoop) params += `&loop=1`;
+        }
+        return `${src}?${params}`;
+    }, [videoDetails, playerParams, currentPlaylist, playlistVideos, isShuffle, isLoop, shuffledPlaylistVideos]);
     
     const updateUrlParams = (key: string, value: string | null) => {
         const newSearchParams = new URLSearchParams(searchParams);
@@ -248,7 +195,7 @@ const VideoPlayerPage: React.FC = () => {
         reorderVideosInPlaylist(playlistId, startIndex, endIndex);
     };
 
-    if (isLoading) {
+    if (isLoading || playerParams === null) {
         return <VideoPlayerPageSkeleton />;
     }
 
@@ -256,7 +203,11 @@ const VideoPlayerPage: React.FC = () => {
         return (
             <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
                 <div className="flex-grow lg:w-2/3">
-                    <div className="aspect-video bg-yt-black rounded-xl overflow-hidden"></div>
+                    <div className="aspect-video bg-yt-black rounded-xl overflow-hidden">
+                        {videoId && playerParams && (
+                             <iframe src={`https://www.youtubeeducation.com/embed/${videoId}${playerParams}`} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
+                        )}
+                    </div>
                     <div className="mt-4 p-4 rounded-lg bg-red-100 dark:bg-red-900/50 text-black dark:text-yt-white">
                         <h2 className="text-lg font-bold mb-2 text-red-500">動画情報の取得エラー</h2>
                         <p>{error}</p>
@@ -298,16 +249,7 @@ const VideoPlayerPage: React.FC = () => {
             <div className="flex-1 min-w-0 max-w-full">
                 {/* Video Player Area */}
                 <div className="w-full aspect-video bg-yt-black rounded-xl overflow-hidden shadow-lg relative z-10">
-                    {playerParams && videoId && (
-                        <iframe
-                            src={`https://www.youtubeeducation.com/embed/${videoId}?${playerParams}`}
-                            title={videoDetails.title}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="w-full h-full"
-                        ></iframe>
-                    )}
+                    <iframe src={iframeSrc} key={iframeSrc} title={videoDetails.title} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
                 </div>
 
                 <div className="">
@@ -420,7 +362,7 @@ const VideoPlayerPage: React.FC = () => {
                     </div>
 
                     {/* Description Box */}
-                    <div className={`mt-4 bg-yt-spec-light-10 dark:bg-yt-dark-gray p-3 rounded-xl text-sm cursor-pointer hover:bg-yt-spec-light-20 dark:hover:bg-yt-gray transition-colors ${isDescriptionExpanded ? '' : 'h-24 overflow-hidden relative'}`} onClick={() => setIsDescriptionExpanded(prev => !prev)}>
+                    <div className={`mt-2 bg-yt-light dark:bg-[#272727] p-3 rounded-xl text-sm cursor-pointer hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors ${isDescriptionExpanded ? '' : 'h-24 overflow-hidden relative'}`} onClick={() => setIsDescriptionExpanded(prev => !prev)}>
                         <div className="font-bold mb-2 text-black dark:text-white">
                             {videoDetails.views}  •  {videoDetails.uploadedAt}
                         </div>
@@ -428,7 +370,7 @@ const VideoPlayerPage: React.FC = () => {
                             <div dangerouslySetInnerHTML={{ __html: videoDetails.description }} />
                         </div>
                         {!isDescriptionExpanded && (
-                            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-yt-spec-light-10 dark:from-yt-dark-gray to-transparent flex items-end p-3 font-semibold">
+                            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-yt-light dark:from-[#272727] to-transparent flex items-end p-3 font-semibold">
                                 もっと見る
                             </div>
                         )}
@@ -439,12 +381,9 @@ const VideoPlayerPage: React.FC = () => {
 
                     {/* Comments Section */}
                     <div className="mt-6 hidden lg:block">
-                        <div className="flex flex-col mb-6">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-bold">{comments.length.toLocaleString()}件のコメント</h2>
-                            </div>
+                        <div className="flex items-center mb-6">
+                            <h2 className="text-xl font-bold">{comments.length.toLocaleString()}件のコメント</h2>
                         </div>
-
                         {comments.length > 0 ? (
                             <div className="space-y-4">
                                 {comments.map(comment => (
