@@ -1,4 +1,3 @@
-
 {
   "name": "xeroxyt-nt-with-youtubei",
   "private": true,
@@ -14,6 +13,7 @@
     "@mlc-ai/web-llm": "^0.2.46",
     "dayjs": "^1.11.11",
     "express": "^5.1.0",
+    "hls.js": "^1.5.8",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^6.25.1",

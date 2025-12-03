@@ -271,6 +271,10 @@ export async function getStreamUrls(videoId: string): Promise<StreamUrls> {
     return await apiFetch(`stream?id=${videoId}`);
 }
 
+export async function getRawStreamData(videoId: string): Promise<any> {
+    return await apiFetch(`stream/${videoId}`);
+}
+
 // --- HOME TAB TYPES AND FUNCTIONS ---
 
 export const mapHomeVideoToVideo = (homeVideo: HomeVideo, channelData?: Partial<ChannelDetails>): Video => {

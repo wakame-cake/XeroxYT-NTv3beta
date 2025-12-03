@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { getVideoDetails, getPlayerConfig, getComments, getVideosByIds, getExternalRelatedVideos } from '../utils/api';
+import { getVideoDetails, getPlayerConfig, getComments, getVideosByIds, getExternalRelatedVideos, getRawStreamData } from '../utils/api';
 import type { VideoDetails, Video, Comment, Channel } from '../types';
 import { useSubscription } from '../contexts/SubscriptionContext';
 import { useHistory } from '../contexts/HistoryContext';
@@ -11,7 +11,8 @@ import PlaylistModal from '../components/PlaylistModal';
 import CommentComponent from '../components/Comment';
 import PlaylistPanel from '../components/PlaylistPanel';
 import RelatedVideoCard from '../components/RelatedVideoCard';
-import { LikeIcon, SaveIcon, MoreIconHorizontal, ShareIcon, DislikeIcon, ChevronRightIcon } from '../components/icons/Icons';
+import HlsVideoPlayer from '../components/HlsVideoPlayer';
+import { LikeIcon, SaveIcon, MoreIconHorizontal, DownloadIcon, DislikeIcon, ChevronRightIcon } from '../components/icons/Icons';
 
 const VideoPlayerPage: React.FC = () => {
     const { videoId } = useParams<{ videoId: string }>();
@@ -39,6 +40,12 @@ const VideoPlayerPage: React.FC = () => {
     // Stable shuffle state
     const [shuffledVideos, setShuffledVideos] = useState<Video[]>([]);
     const shuffleSeedRef = useRef<string | null>(null);
+
+    // New state for Player Mode and Streaming
+    const [playerMode, setPlayerMode] = useState<'player' | 'stream'>('player');
+    const [streamData, setStreamData] = useState<any>(null);
+    const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+    const downloadMenuRef = useRef<HTMLDivElement>(null);
 
     const { isSubscribed, subscribe, unsubscribe } = useSubscription();
     const { addVideoToHistory } = useHistory();
@@ -76,6 +83,9 @@ const VideoPlayerPage: React.FC = () => {
         const handleClickOutside = (event: MouseEvent) => {
             if (collaboratorMenuRef.current && !collaboratorMenuRef.current.contains(event.target as Node)) {
                 setIsCollaboratorMenuOpen(false);
+            }
+            if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
+                setIsDownloadMenuOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -135,6 +145,23 @@ const VideoPlayerPage: React.FC = () => {
         }
     }, [isShuffle, playlistVideos, videoId, playlistId, shuffledVideos.length]);
 
+    // Fetch raw stream data when needed (Stream mode or Download)
+    const fetchStreamDataIfNeeded = useCallback(async () => {
+        if (streamData || !videoId) return;
+        try {
+            const data = await getRawStreamData(videoId);
+            setStreamData(data);
+        } catch (e) {
+            console.error("Failed to fetch stream data", e);
+        }
+    }, [videoId, streamData]);
+
+    useEffect(() => {
+        if (playerMode === 'stream') {
+            fetchStreamDataIfNeeded();
+        }
+    }, [playerMode, fetchStreamDataIfNeeded]);
+
     useEffect(() => {
         let isMounted = true;
 
@@ -147,6 +174,8 @@ const VideoPlayerPage: React.FC = () => {
                 setVideoDetails(null);
                 setComments([]);
                 setRelatedVideos([]);
+                setStreamData(null); // Reset stream data on video change
+                setPlayerMode('player'); // Reset to default player
                 window.scrollTo(0, 0);
             }
 
@@ -287,6 +316,18 @@ const VideoPlayerPage: React.FC = () => {
         return `${src}?${params}`;
     }, [videoDetails, playerParams]);
 
+    // Get highest quality M3U8 for Stream mode
+    const getStreamUrl = useMemo(() => {
+        if (!streamData?.m3u8) return null;
+        const qualities = ['1080p', '720p', '480p', '360p', '240p', '144p'];
+        for (const quality of qualities) {
+            if (streamData.m3u8[quality]?.url?.url) {
+                return streamData.m3u8[quality].url.url;
+            }
+        }
+        return null;
+    }, [streamData]);
+
     const updateUrlParams = (key: string, value: string | null) => {
         const newSearchParams = new URLSearchParams(searchParams);
         if (value === null) newSearchParams.delete(key);
@@ -314,6 +355,13 @@ const VideoPlayerPage: React.FC = () => {
     const handlePlaylistReorder = (startIndex: number, endIndex: number) => {
         if (!playlistId) return;
         reorderVideosInPlaylist(playlistId, startIndex, endIndex);
+    };
+
+    const handleDownloadClick = () => {
+        if (!isDownloadMenuOpen) {
+            fetchStreamDataIfNeeded();
+        }
+        setIsDownloadMenuOpen(!isDownloadMenuOpen);
     };
 
     if (isLoading) {
@@ -370,24 +418,51 @@ const VideoPlayerPage: React.FC = () => {
             <div className="flex-1 min-w-0 max-w-full">
                 {/* Video Player Area */}
                 <div className="w-full aspect-video bg-yt-black rounded-xl overflow-hidden shadow-lg relative z-10">
-                    {playerParams && videoId && (
-                        <iframe
-                            src={iframeSrc}
-                            title={videoDetails.title}
-                            frameBorder="0"
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                            allowFullScreen
-                            className="w-full h-full"
-                        ></iframe>
+                    {playerMode === 'player' ? (
+                        playerParams && videoId && (
+                            <iframe
+                                src={iframeSrc}
+                                key={iframeSrc}
+                                title={videoDetails.title}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                className="w-full h-full"
+                            ></iframe>
+                        )
+                    ) : (
+                        getStreamUrl ? (
+                            <HlsVideoPlayer src={getStreamUrl} autoPlay={true} />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white">
+                                {streamData ? 'ストリームが見つかりませんでした' : '読み込み中...'}
+                            </div>
+                        )
                     )}
                 </div>
 
                 <div className="">
-                    {/* Title */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-3 mb-2">
+                    {/* Title & Mode Switch */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mt-3 mb-2">
                          <h1 className="text-lg md:text-xl font-bold text-black dark:text-white break-words flex-1">
                             {videoDetails.title}
                         </h1>
+                        
+                        {/* Player Mode Switch */}
+                        <div className="flex bg-yt-light dark:bg-yt-light-black rounded-lg p-1 flex-shrink-0 self-start">
+                            <button 
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${playerMode === 'player' ? 'bg-white dark:bg-yt-spec-20 text-black dark:text-white shadow-sm' : 'text-yt-light-gray hover:text-black dark:hover:text-white'}`}
+                                onClick={() => setPlayerMode('player')}
+                            >
+                                Player
+                            </button>
+                            <button 
+                                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${playerMode === 'stream' ? 'bg-white dark:bg-yt-spec-20 text-black dark:text-white shadow-sm' : 'text-yt-light-gray hover:text-black dark:hover:text-white'}`}
+                                onClick={() => setPlayerMode('stream')}
+                            >
+                                Stream
+                            </button>
+                        </div>
                     </div>
 
                     {/* Actions Bar Container */}
@@ -473,10 +548,61 @@ const VideoPlayerPage: React.FC = () => {
                                 </button>
                             </div>
 
-                            <button className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0">
-                                <ShareIcon />
-                                <span className="text-sm font-semibold hidden sm:inline">共有</span>
-                            </button>
+                            {/* Download Button (Replacing Share) */}
+                            <div className="relative" ref={downloadMenuRef}>
+                                <button 
+                                    onClick={handleDownloadClick}
+                                    className="flex items-center bg-yt-light dark:bg-[#272727] rounded-full h-9 px-3 sm:px-4 hover:bg-[#e5e5e5] dark:hover:bg-[#3f3f3f] transition-colors whitespace-nowrap gap-2 flex-shrink-0"
+                                >
+                                    <DownloadIcon />
+                                    <span className="text-sm font-semibold hidden sm:inline">ダウンロード</span>
+                                </button>
+                                {isDownloadMenuOpen && (
+                                    <div className="absolute top-full right-0 mt-2 w-56 bg-yt-white dark:bg-yt-light-black rounded-lg shadow-xl border border-yt-spec-light-20 dark:border-yt-spec-20 z-50 overflow-hidden">
+                                        <div className="px-3 py-2 text-xs font-bold text-yt-light-gray border-b border-yt-spec-light-20 dark:border-yt-spec-20">
+                                            ダウンロード形式を選択
+                                        </div>
+                                        <div className="max-h-64 overflow-y-auto">
+                                            {!streamData ? (
+                                                <div className="p-4 text-center text-sm text-yt-light-gray">読み込み中...</div>
+                                            ) : (
+                                                <>
+                                                    {/* Video Options */}
+                                                    {['1080p', '720p', '480p', '360p', '240p'].map(quality => {
+                                                        const url = streamData.videourl?.[quality]?.video?.url;
+                                                        if (!url) return null;
+                                                        const label = quality === '360p' ? quality : `${quality} (音声なし)`;
+                                                        return (
+                                                            <a 
+                                                                key={quality} 
+                                                                href={url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="flex items-center px-4 py-3 hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 text-sm text-black dark:text-white"
+                                                                onClick={() => setIsDownloadMenuOpen(false)}
+                                                            >
+                                                                {label}
+                                                            </a>
+                                                        );
+                                                    })}
+                                                    {/* Audio Option */}
+                                                    {streamData.videourl?.['144p']?.audio?.url && (
+                                                        <a 
+                                                            href={streamData.videourl['144p'].audio.url} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center px-4 py-3 hover:bg-yt-spec-light-10 dark:hover:bg-yt-spec-10 text-sm text-black dark:text-white border-t border-yt-spec-light-20 dark:border-yt-spec-20"
+                                                            onClick={() => setIsDownloadMenuOpen(false)}
+                                                        >
+                                                            音声のみ (m4a)
+                                                        </a>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
 
                             <button 
                                 onClick={() => setIsPlaylistModalOpen(true)} 
