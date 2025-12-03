@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 // FIX: Use named imports for react-router-dom components and hooks.
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
@@ -16,8 +15,8 @@ import { LikeIcon, SaveIcon, MoreIconHorizontal, ShareIcon, DislikeIcon, Chevron
 
 const VideoPlayerPage: React.FC = () => {
     const { videoId } = useParams<{ videoId: string }>();
-    const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
     const playlistId = searchParams.get('list');
 
     const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
@@ -37,6 +36,10 @@ const VideoPlayerPage: React.FC = () => {
     const [isShuffle, setIsShuffle] = useState(searchParams.get('shuffle') === '1');
     const [isLoop, setIsLoop] = useState(searchParams.get('loop') === '1');
 
+    // Stable shuffle state
+    const [shuffledVideos, setShuffledVideos] = useState<Video[]>([]);
+    const shuffleSeedRef = useRef<string | null>(null);
+
     const { isSubscribed, subscribe, unsubscribe } = useSubscription();
     const { addVideoToHistory } = useHistory();
     const { playlists, reorderVideosInPlaylist } = usePlaylist();
@@ -51,9 +54,6 @@ const VideoPlayerPage: React.FC = () => {
         setIsLoop(searchParams.get('loop') === '1');
     }, [searchParams]);
     
-    // Playlist auto-advance logic has been removed as it requires the YouTube IFrame Player API,
-    // which is not compatible with the requested 'youtubeeducation.com' host.
-
     useEffect(() => {
         const fetchConfig = async () => {
             try {
@@ -101,6 +101,39 @@ const VideoPlayerPage: React.FC = () => {
         };
         fetchPlaylistVideos();
     }, [currentPlaylist]);
+
+    // Stable Shuffle Logic
+    useEffect(() => {
+        // Reset shuffle if disabled or playlist changes
+        if (!isShuffle || !playlistId) {
+            setShuffledVideos([]);
+            shuffleSeedRef.current = null;
+            return;
+        }
+
+        // If we already have a shuffled list for this playlist session, don't reshuffle on every navigation
+        if (shuffleSeedRef.current === playlistId && shuffledVideos.length > 0) {
+            return;
+        }
+
+        if (playlistVideos.length > 0) {
+            const currentIndex = playlistVideos.findIndex(v => v.id === videoId);
+            const newOrder = [...playlistVideos];
+            
+            // If current video is found, make it first, then shuffle the rest
+            if (currentIndex !== -1) {
+                const current = newOrder[currentIndex];
+                newOrder.splice(currentIndex, 1);
+                newOrder.sort(() => Math.random() - 0.5);
+                newOrder.unshift(current);
+            } else {
+                 newOrder.sort(() => Math.random() - 0.5);
+            }
+            
+            setShuffledVideos(newOrder);
+            shuffleSeedRef.current = playlistId;
+        }
+    }, [isShuffle, playlistVideos, videoId, playlistId, shuffledVideos.length]);
 
     useEffect(() => {
         let isMounted = true;
@@ -173,6 +206,87 @@ const VideoPlayerPage: React.FC = () => {
         };
     }, [videoId, addVideoToHistory]);
     
+    // Navigation Logic
+    const navigateToNextVideo = useCallback(() => {
+        if (!currentPlaylist || playlistVideos.length === 0) return;
+
+        const currentList = isShuffle ? shuffledVideos : playlistVideos;
+        if (currentList.length === 0) return;
+
+        const currentIndex = currentList.findIndex(v => v.id === videoId);
+        
+        let nextIndex = -1;
+        if (currentIndex !== -1) {
+            nextIndex = currentIndex + 1;
+        } else {
+             // Fallback: start from 0 if current not found
+             nextIndex = 0;
+        }
+
+        if (nextIndex >= currentList.length) {
+            if (isLoop) {
+                nextIndex = 0;
+            } else {
+                return; // End of playlist
+            }
+        }
+        
+        const nextVideo = currentList[nextIndex];
+        if (nextVideo) {
+             const newParams = new URLSearchParams(searchParams);
+             // Ensure shuffle/loop state persists
+             if (isShuffle) newParams.set('shuffle', '1');
+             if (isLoop) newParams.set('loop', '1');
+             
+             navigate(`/watch/${nextVideo.id}?${newParams.toString()}`);
+        }
+    }, [currentPlaylist, playlistVideos, isShuffle, shuffledVideos, videoId, isLoop, navigate, searchParams]);
+
+    // Iframe Event Listener for Auto-Advance
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            // Robustly parse the message
+            let data = event.data;
+            if (typeof data === 'string') {
+                try {
+                    data = JSON.parse(data);
+                } catch (e) {
+                    return; // Not JSON
+                }
+            }
+
+            // Check for YouTube State Change event
+            // data.info === 0 corresponds to YT.PlayerState.ENDED
+            if (data && data.event === 'onStateChange' && data.info === 0) {
+                navigateToNextVideo();
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [navigateToNextVideo]);
+
+    const iframeSrc = useMemo(() => {
+        if (!videoDetails?.id || !playerParams) return '';
+        let src = `https://www.youtubeeducation.com/embed/${videoDetails.id}`;
+        let params = playerParams.startsWith('?') ? playerParams.substring(1) : playerParams;
+        
+        // Ensure enablejsapi=1 is present for event listening
+        if (!params.includes('enablejsapi')) {
+            params += '&enablejsapi=1';
+        }
+        // Add origin to ensure we can receive messages from the iframe
+        if (!params.includes('origin')) {
+            params += `&origin=${encodeURIComponent(window.location.origin)}`;
+        }
+        // Ensure autoplay is set
+        if (!params.includes('autoplay')) {
+            params += '&autoplay=1';
+        }
+
+        return `${src}?${params}`;
+    }, [videoDetails, playerParams]);
+
     const updateUrlParams = (key: string, value: string | null) => {
         const newSearchParams = new URLSearchParams(searchParams);
         if (value === null) newSearchParams.delete(key);
@@ -184,6 +298,11 @@ const VideoPlayerPage: React.FC = () => {
         const newShuffleState = !isShuffle;
         setIsShuffle(newShuffleState);
         updateUrlParams('shuffle', newShuffleState ? '1' : null);
+        
+        // Force re-seed of shuffle logic when toggling on
+        if (newShuffleState) {
+            shuffleSeedRef.current = null;
+        }
     };
 
     const toggleLoop = () => {
@@ -205,7 +324,11 @@ const VideoPlayerPage: React.FC = () => {
         return (
             <div className="flex flex-col md:flex-row gap-6 max-w-[1750px] mx-auto px-4 md:px-6">
                 <div className="flex-grow lg:w-2/3">
-                    <div className="aspect-video bg-yt-black rounded-xl overflow-hidden"></div>
+                    <div className="aspect-video bg-yt-black rounded-xl overflow-hidden">
+                        {videoId && playerParams && (
+                             <iframe src={`https://www.youtubeeducation.com/embed/${videoId}?${playerParams}`} title="YouTube video player" frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen className="w-full h-full"></iframe>
+                        )}
+                    </div>
                     <div className="mt-4 p-4 rounded-lg bg-red-100 dark:bg-red-900/50 text-black dark:text-yt-white">
                         <h2 className="text-lg font-bold mb-2 text-red-500">動画情報の取得エラー</h2>
                         <p>{error}</p>
@@ -249,7 +372,7 @@ const VideoPlayerPage: React.FC = () => {
                 <div className="w-full aspect-video bg-yt-black rounded-xl overflow-hidden shadow-lg relative z-10">
                     {playerParams && videoId && (
                         <iframe
-                            src={`https://www.youtubeeducation.com/embed/${videoId}?${playerParams}`}
+                            src={iframeSrc}
                             title={videoDetails.title}
                             frameBorder="0"
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -410,7 +533,7 @@ const VideoPlayerPage: React.FC = () => {
             {/* Sidebar: Playlist & Related Videos */}
             <div className="w-full lg:w-[350px] xl:w-[400px] flex-shrink-0 flex flex-col gap-4 pb-10">
                 {currentPlaylist && (
-                     <PlaylistPanel playlist={currentPlaylist} authorName={currentPlaylist.authorName} videos={playlistVideos} currentVideoId={videoId} isShuffle={isShuffle} isLoop={isLoop} toggleShuffle={toggleShuffle} toggleLoop={toggleLoop} onReorder={handlePlaylistReorder} />
+                     <PlaylistPanel playlist={currentPlaylist} authorName={currentPlaylist.authorName} videos={isShuffle ? shuffledVideos : playlistVideos} currentVideoId={videoId} isShuffle={isShuffle} isLoop={isLoop} toggleShuffle={toggleShuffle} toggleLoop={toggleLoop} onReorder={handlePlaylistReorder} />
                 )}
                 
                 {/* Filter Chips (Visual only) */}
