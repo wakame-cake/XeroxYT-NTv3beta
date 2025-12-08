@@ -222,7 +222,7 @@ const VideoPlayerPage: React.FC = () => {
                         // Overwrite if external source is better or supplementary
                         setRelatedVideos(prev => {
                             if (prev.length > 0) return prev; // Keep internal related if available
-                            return externalRelated.slice(0, 20);
+                            return externalRelated.slice(0, 50);
                         });
                     }
                 })
